@@ -25,7 +25,7 @@
    Implement file-based storage engine: one file per project, key stored in clear text, value stored as encrypted blob (already encrypted by client). CRUD operations for projects and key-value pairs.
 
 5. **server_auth**
-   Implement SSH public key authentication for the REST API: `authorized_keys` management (register/list/revoke), per-request signature verification middleware.
+   Implement SSH public key authentication for the REST API. Public keys are managed by the system administrator by placing `.pub` files (OpenSSH authorized_keys format, free-form filename) in `{storage_root}/.keys/`; there is no HTTP API for key registration or revocation. Per-request signature verification middleware reads `X-Timestamp`, `X-Fingerprint` and `X-Signature` headers, verifies the signature against the stored key, and enforces a **30-second replay-protection window** (consistent with `ssh_auth_primitives.CheckTimestamp`).
    > **Contract with `server_storage`**: the `userID` passed to any `Store` method must be the canonical SSH fingerprint string produced by `golang.org/x/crypto/ssh.FingerprintSHA256`, e.g. `SHA256:<base64>`. The store sanitises this value for filesystem use but does **not** guarantee isolation if two distinct fingerprints produce the same sanitised path. `server_auth` is responsible for ensuring every authenticated request carries the correct canonical fingerprint.
 
 6. **server_projects_api**
