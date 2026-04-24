@@ -1,1 +1,14 @@
 .idea/
+
+# Binaries
+/bin/
+/dist/
+*.test
+
+# Test & coverage artefacts
+coverage.out
+tests/integration/data/
+
+# Go workspace
+go.work
+go.work.sum

@@ -1,0 +1,13 @@
+services:
+  # server:
+  #   build:
+  #     context: ../../
+  #     dockerfile: Dockerfile.server
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     EKVS_SERVER_ADDR: "0.0.0.0:8080"
+  #     EKVS_STORAGE_PATH: "/data"
+  #   volumes:
+  #     - ./data:/data
+

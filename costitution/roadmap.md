@@ -9,7 +9,7 @@
 ### Phase 0 — Project Foundation
 
 1. **project_setup**
-   Set up Go module, directory structure, shared packages (errors, config, logging), and CI skeleton. Include `Makefile` with `test` (unit) and `integration-test` targets.
+   Set up Go module, directory structure, shared packages (errors, config, logging). Include `Makefile` with `test` (unit) and `integration-test` targets.
 
 2. **ssh_auth_primitives**
    Implement shared SSH key parsing, signature generation/verification, and key fingerprinting using `golang.org/x/crypto/ssh`. This package is a dependency of both server and clients.
@@ -86,4 +86,11 @@
 
 21. **integration_test_server_tui**
     Docker-based semi-manual integration scenarios covering server ↔ TUI communication: same flows as CLI scenarios but driven through the TUI interface.
+
+---
+
+### Phase 5 — CI Pipeline
+
+22. **ci_pipeline**
+    GitHub Actions workflow that runs on every push/PR to `main`: checkout, setup-go, `make test`, `make lint`. Integration tests are explicitly excluded from CI and remain manual only.
 
