@@ -45,8 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler := server.ProjectsHandler(store, log)
-	authed := auth.AuthMiddleware(ks, 30*time.Second, handler)
+	authed := auth.AuthMiddleware(ks, 30*time.Second, server.NewHandler(store, log))
 
 	log.Info("server starting", "addr", cfg.ServerAddr)
 	if err := http.ListenAndServe(cfg.ServerAddr, authed); err != nil {

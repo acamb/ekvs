@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -20,7 +19,12 @@ import (
 //	DELETE /projects/{name}  → delete project
 func ProjectsHandler(store *storage.Store, log logging.Logger) http.Handler {
 	mux := http.NewServeMux()
+	registerProjectsRoutes(mux, store, log)
+	return mux
+}
 
+// registerProjectsRoutes registers project management routes on mux.
+func registerProjectsRoutes(mux *http.ServeMux, store *storage.Store, log logging.Logger) {
 	mux.HandleFunc("POST /projects/{name}", func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := auth.UserIDFromContext(r.Context())
 		if !ok {
@@ -91,18 +95,4 @@ func ProjectsHandler(store *storage.Store, log logging.Logger) http.Handler {
 		log.Debug("project deleted", "user", userID, "project", name)
 		w.WriteHeader(http.StatusNoContent)
 	})
-
-	return mux
-}
-
-// writeJSON sets Content-Type, writes status and encodes v as JSON.
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-// writeError writes a JSON error body with the given HTTP status.
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
 }
