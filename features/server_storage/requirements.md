@@ -2,15 +2,17 @@
 
 ## User Decisions
 
-| Decision | Choice |
-|---|---|
-| Directory structure | `{storage_root}/{userID_sanitized}/{project_name}.json` |
-| File format | JSON with metadata: `{"version": 1, "entries": {"KEY": "base64blob"}}` |
-| Naming validation | `^[a-zA-Z0-9_\-\.]{1,128}$` — applied to both project names and secret keys |
-| Concurrency model | Single-process; one `sync.RWMutex` **per project**; a meta `sync.Mutex` protects the lock map |
-| Atomic writes | Write to temp file in same directory, then `os.Rename` |
-| userID sanitisation | Replace every character outside `[a-zA-Z0-9_\-]` with `_` (deterministic, no validation error) |
-| JSON versioning | `"version"` field stored as `1`; reads that encounter an unknown version return a wrapped `fmt.Errorf` (no migration logic in this milestone) |
+ Decision  Choice 
+------
+ Directory structure  `{storage_root}/{userID_sanitized}/{project_name}.json` 
+ File format  JSON with metadata: `{"version": 1, "entries": {"KEY": "base64blob"}}` 
+ File permissions  Project JSON files created with mode `0600`; user directories created with mode `0700` 
+ Naming validation  `^[a-zA-Z0-9_\-\.]{1,128}$` — applied to both project names and secret keys 
+ Concurrency model  Single-process; one `sync.RWMutex` **per project**; a meta `sync.Mutex` protects the lock map 
+ Lock lifecycle  Per-project locks are created lazily and **removed from the map on `DeleteProject`** to avoid unbounded growth 
+ Atomic writes  Write to temp file in same directory (mode `0600`), then `os.Rename`; the per-project write lock guarantees no concurrent writers race on the temp file 
+ userID sanitisation  Replace every character outside `[a-zA-Z0-9_\-]` with `_` (deterministic, no validation error). **Caller contract**: `userID` must be a canonical SSH fingerprint string (e.g. `SHA256:<base64>`); the store does not guarantee isolation between two distinct `userID` values that produce the same sanitised directory name 
+ JSON versioning  `"version"` field stored as `1`; reads that encounter an unknown version return `ErrUnknownVersion` (no migration logic in this milestone) 
 
 ---
 
@@ -52,10 +54,11 @@ import "errors"
 
 // Error sentinels.
 var (
-    ErrProjectNotFound    = errors.New("project not found")
+    ErrProjectNotFound      = errors.New("project not found")
     ErrProjectAlreadyExists = errors.New("project already exists")
-    ErrKeyNotFound        = errors.New("key not found")
-    ErrInvalidName        = errors.New("invalid name")
+    ErrKeyNotFound          = errors.New("key not found")
+    ErrInvalidName          = errors.New("invalid name")
+    ErrUnknownVersion       = errors.New("unknown storage version")
 )
 
 // Store is a file-backed storage engine for encrypted key-value pairs.
@@ -75,10 +78,13 @@ func (s *Store) CreateProject(userID, project string) error
 
 // DeleteProject removes the project file and all its secrets.
 // Returns ErrProjectNotFound if the project does not exist.
+// After a successful deletion the per-project lock is removed from the
+// internal lock map to prevent unbounded memory growth.
 func (s *Store) DeleteProject(userID, project string) error
 
 // ListProjects returns all project names for userID, sorted alphabetically.
-// Returns an empty (non-nil) slice if the user has no projects.
+// Returns an empty (non-nil) slice if the user has no projects or if the
+// user directory does not exist yet (os.ErrNotExist is silently absorbed).
 func (s *Store) ListProjects(userID string) ([]string, error)
 
 // SetSecret creates or overwrites key with value in project.
@@ -175,8 +181,10 @@ Locking protocol for any operation on `(userID, project)`:
 5. Perform the filesystem operation.
 6. Release the per-project lock.
 
-This allows operations on **different projects to proceed in parallel** while
-serialising concurrent access to the **same project**.
+**Lock cleanup on `DeleteProject`**: after step 6 (once the write lock is released),
+re-acquire `Store.mu` and delete `locks[lockKey]` from the map. Any concurrent caller
+that obtained the same `*sync.RWMutex` reference before step 1 will still finish safely
+on its own copy; the map simply no longer holds a reference to it.
 
 ---
 
@@ -191,12 +199,13 @@ serialising concurrent access to the **same project**.
 
 ## Error Sentinels
 
-| Sentinel | Returned by | Condition |
-|---|---|---|
-| `ErrInvalidName` | `CreateProject`, `SetSecret` | Name fails regex validation |
-| `ErrProjectAlreadyExists` | `CreateProject` | Project file already exists |
-| `ErrProjectNotFound` | `DeleteProject`, `SetSecret`, `GetSecret`, `DeleteSecret`, `ListSecrets` | Project file does not exist |
-| `ErrKeyNotFound` | `GetSecret`, `DeleteSecret` | Key absent from `entries` map |
+ Sentinel  Returned by  Condition 
+---------
+ `ErrInvalidName`  `CreateProject`, `SetSecret`  Name fails regex validation. Read/delete methods do **not** re-validate names: an invalid name simply yields no matching file → `ErrProjectNotFound` or `ErrKeyNotFound` 
+ `ErrProjectAlreadyExists`  `CreateProject`  Project file already exists 
+ `ErrProjectNotFound`  `DeleteProject`, `SetSecret`, `GetSecret`, `DeleteSecret`, `ListSecrets`  Project file does not exist 
+ `ErrKeyNotFound`  `GetSecret`, `DeleteSecret`  Key absent from `entries` map 
+ `ErrUnknownVersion`  all methods that call `readProject`  JSON file contains a `"version"` value other than `1`; callers (e.g. HTTP handlers) should treat this as an internal server error (HTTP 500) 
 
 ---
 

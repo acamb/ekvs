@@ -26,6 +26,7 @@
 
 5. **server_auth**
    Implement SSH public key authentication for the REST API: `authorized_keys` management (register/list/revoke), per-request signature verification middleware.
+   > **Contract with `server_storage`**: the `userID` passed to any `Store` method must be the canonical SSH fingerprint string produced by `golang.org/x/crypto/ssh.FingerprintSHA256`, e.g. `SHA256:<base64>`. The store sanitises this value for filesystem use but does **not** guarantee isolation if two distinct fingerprints produce the same sanitised path. `server_auth` is responsible for ensuring every authenticated request carries the correct canonical fingerprint.
 
 6. **server_projects_api**
    REST endpoints for project management: create, list, delete projects per user.
