@@ -87,6 +87,13 @@ func UserIDFromContext(ctx context.Context) (string, bool) {
 	return v, ok
 }
 
+// NewContextWithUserID returns a copy of ctx with userID stored under the same
+// key used by AuthMiddleware. This is intended for use in tests that need to
+// exercise handlers without going through full SSH authentication.
+func NewContextWithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, ctxKeyUserID, userID)
+}
+
 // writeError writes a JSON error response with the given status code.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")

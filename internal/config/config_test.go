@@ -9,6 +9,7 @@ func TestLoad_Defaults(t *testing.T) {
 	// Ensure env vars are unset for this test.
 	os.Unsetenv("EKVS_SERVER_ADDR")
 	os.Unsetenv("EKVS_STORAGE_PATH")
+	os.Unsetenv("EKVS_KEYS_DIR")
 	os.Unsetenv("EKVS_LOG_LEVEL")
 
 	cfg, err := Load()
@@ -23,6 +24,7 @@ func TestLoad_Defaults(t *testing.T) {
 	}{
 		{"ServerAddr", cfg.ServerAddr, defaultServerAddr},
 		{"StoragePath", cfg.StoragePath, defaultStoragePath},
+		{"KeysDir", cfg.KeysDir, defaultKeysDir},
 		{"LogLevel", cfg.LogLevel, defaultLogLevel},
 	}
 
@@ -43,6 +45,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}{
 		{"EKVS_SERVER_ADDR", "0.0.0.0:9090", func(c *Config) string { return c.ServerAddr }},
 		{"EKVS_STORAGE_PATH", "/tmp/ekvs", func(c *Config) string { return c.StoragePath }},
+		{"EKVS_KEYS_DIR", "/tmp/ekvs/.keys", func(c *Config) string { return c.KeysDir }},
 		{"EKVS_LOG_LEVEL", "debug", func(c *Config) string { return c.LogLevel }},
 	}
 
