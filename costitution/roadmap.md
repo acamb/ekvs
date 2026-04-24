@@ -31,8 +31,14 @@
 6. **server_projects_api**
    REST endpoints for project management: create, list, delete projects per user.
 
-7. **server_secrets_api**
+7. **server_config**
+   Load server configuration from a YAML file (default: `ekvs.yaml`) whose path can be overridden via a `--config` CLI flag. Environment variables continue to work as overrides (env > file > defaults). On startup the server automatically creates any missing directories (`StoragePath`, `KeysDir`). The `internal/config` package is updated to support YAML loading; `cmd/server/main.go` gains flag parsing.
+
+8. **server_secrets_api**
    REST endpoints for secret management within a project: set, get, list, delete key-value pairs.
+
+9.**code cleanup**
+   Refactor and clean up server codebase: remove any temporary scaffolding, ensure consistent error handling and logging, resolve warnings.
 
 ---
 
