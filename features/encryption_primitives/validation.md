@@ -4,10 +4,10 @@
 
 ```zsh
 # Unit tests with race detector and coverage:
-go test -race -count=1 -cover ./internal/crypto/...
+go test -race -count=1 -cover ./internal/encryption/...
 
 # Detailed coverage report:
-go test -count=1 -coverprofile=coverage.out ./internal/crypto/...
+go test -count=1 -coverprofile=coverage.out ./internal/encryption/...
 go tool cover -func=coverage.out
 
 # Full suite (must not regress):
@@ -15,21 +15,22 @@ make test
 ```
 
 **"Passing" definition:** all test cases exit with `PASS`, no race conditions, statement
-coverage ≥ 90 % for `ekvs/internal/crypto`, and `make test` remains fully green.
+coverage ≥ 90 % for `ekvs/internal/encryption`, and `make test` remains fully green.
 
 ---
 
 ## Manual Checklist
 
-- [ ] `internal/crypto/errors.go` exports exactly `ErrUnsupportedKeyType` and `ErrDecryptionFailed`.
-- [ ] `internal/crypto/derive.go` exports `DeriveKey` and handles all three key families.
-- [ ] `internal/crypto/cipher.go` exports `Encrypt` and `Decrypt`.
-- [ ] `go build ./internal/crypto/...` produces no errors.
-- [ ] `go vet ./internal/crypto/...` produces no diagnostics.
+- [ ] `internal/encryption/errors.go` exports exactly `ErrUnsupportedKeyType` and `ErrDecryptionFailed`.
+- [ ] `internal/encryption/derive.go` exports `DeriveKey` and handles all three key families.
+- [ ] `internal/encryption/cipher.go` exports `Encrypt` and `Decrypt`.
+- [ ] `go build ./internal/encryption/...` produces no errors.
+- [ ] `go vet ./internal/encryption/...` produces no diagnostics.
 - [ ] `go mod tidy` leaves `go.mod` and `go.sum` unchanged (no new deps needed).
 - [ ] `Encrypt` called twice with the same key and plaintext produces **two different** base64 strings.
 - [ ] `DeriveKey` called twice with the same in-memory signer returns **identical** byte slices.
 - [ ] A ciphertext can be decoded by hand: base64-decode → first 12 bytes = nonce, rest = ciphertext+tag.
+- [ ] `DeriveKey` with an RSA key < 2048 bit returns `ErrUnsupportedKeyType`.
 
 ---
 
@@ -46,6 +47,7 @@ coverage ≥ 90 % for `ekvs/internal/crypto`, and `make test` remains fully gree
 | D-5 | Same ECDSA signer called twice | Both calls return identical bytes |
 | D-6 | Same RSA signer called twice | Both calls return identical bytes |
 | D-7 | Unsupported signer type (unknown `Public()`) | `ErrUnsupportedKeyType` |
+| D-8 | RSA key with modulus < 2048 bit | `ErrUnsupportedKeyType` |
 
 ### `Encrypt`
 
@@ -76,4 +78,3 @@ coverage ≥ 90 % for `ekvs/internal/crypto`, and `make test` remains fully gree
 | RT-2 | `DeriveKey(ecdsa)` → `Encrypt` → `Decrypt` → plaintext equality |
 | RT-3 | `DeriveKey(rsa)` → `Encrypt` → `Decrypt` → plaintext equality |
 | RT-4 | Encrypt three distinct values under the same key; decrypt all three independently |
-

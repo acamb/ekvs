@@ -8,8 +8,11 @@
 | Symmetric cipher | AES-256-GCM (32-byte key, 12-byte nonce, 16-byte tag) |
 | Nonce strategy | Fresh `crypto/rand` nonce per `Encrypt` call |
 | Ciphertext encoding | `base64(nonce ∥ ciphertext+tag)` — standard (padded) base64 |
-| Supported key types | RSA (any bit size), ECDSA (P-256, P-384, P-521), Ed25519 |
+| Supported key types | RSA (≥ 2048 bit only), ECDSA (P-256, P-384, P-521), Ed25519 |
 | Key derivation approach | Approach A — derive from raw private key material via HKDF (not hybrid/asymmetric wrapping) |
+| Package name | `encryption` (path `internal/encryption`) — avoids stylistic conflict with stdlib `crypto` |
+| RSA IKM | Concatenation of **all** primes: `key.Primes[0] ∥ key.Primes[1] ∥ … ∥ key.Primes[n-1]` |
+| RSA minimum key size | Keys with modulus `< 2048 bit` are rejected with `ErrUnsupportedKeyType` |
 
 ---
 
@@ -36,17 +39,17 @@
 ## Package Path
 
 ```
-internal/crypto
+internal/encryption
 ```
 
-Import path: `ekvs/internal/crypto`
+Import path: `ekvs/internal/encryption`
 
 ---
 
 ## Exported API
 
 ```go
-package crypto
+package encryption
 
 import "crypto"
 
@@ -56,8 +59,8 @@ var (
 )
 
 // DeriveKey derives a 32-byte AES-256 key from the given crypto.Signer.
-// Supports *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey.
-// Returns ErrUnsupportedKeyType for unrecognised key types.
+// Supports *rsa.PrivateKey (≥ 2048 bit), *ecdsa.PrivateKey, ed25519.PrivateKey.
+// Returns ErrUnsupportedKeyType for unrecognised key types or RSA keys < 2048 bit.
 func DeriveKey(signer crypto.Signer) ([]byte, error)
 
 // Encrypt encrypts plaintext using AES-256-GCM with the provided 32-byte key.
@@ -77,7 +80,9 @@ func Decrypt(key []byte, encoded string) ([]byte, error)
 |---|---|
 | `ed25519.PrivateKey` | `privateKey[:32]` — the 32-byte seed (first half of the 64-byte key) |
 | `*ecdsa.PrivateKey` | `key.D.Bytes()` — the private scalar in big-endian bytes |
-| `*rsa.PrivateKey` | `key.Primes[0].Bytes() ∥ key.Primes[1].Bytes()` — P concatenated with Q |
+| `*rsa.PrivateKey` | `key.Primes[0].Bytes() ∥ … ∥ key.Primes[n-1].Bytes()` — all prime factors concatenated in order |
+
+RSA pre-condition: `key.N.BitLen() < 2048` → return `ErrUnsupportedKeyType` before any derivation.
 
 HKDF parameters (all types):
 - Hash: `crypto/sha256`
@@ -108,7 +113,7 @@ suitable for storage as a string value in the key-value store.
 
 | Sentinel | Returned by | Condition |
 |---|---|---|
-| `ErrUnsupportedKeyType` | `DeriveKey` | The underlying type of `crypto.Signer` is not RSA, ECDSA, or Ed25519 |
+| `ErrUnsupportedKeyType` | `DeriveKey` | The underlying type of `crypto.Signer` is not RSA, ECDSA, or Ed25519; or RSA key has modulus < 2048 bit |
 | `ErrDecryptionFailed` | `Decrypt` | Base64 decode error, blob < 12 bytes, or GCM authentication failure |
 
 ---
@@ -133,6 +138,6 @@ No new module dependencies required. Packages used:
 - Framework: standard `testing` package; table-driven tests.
 - Fixtures: PEM files in `internal/ssh/testdata/` (`rsa`, `ecdsa`, `ed25519`) loaded via
   `os.ReadFile` + `ekvs/internal/ssh.ParsePrivateKey`.
-- Coverage target: **≥ 90 % statement coverage** for `internal/crypto`.
+- Coverage target: **≥ 90 % statement coverage** for `ekvs/internal/encryption`.
 - No external test helpers or test-only dependencies.
 
