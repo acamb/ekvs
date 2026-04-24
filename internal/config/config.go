@@ -5,6 +5,7 @@ import "os"
 const (
 	defaultServerAddr  = "127.0.0.1:8080"
 	defaultStoragePath = "./data"
+	defaultKeysDir     = "./data/.keys"
 	defaultLogLevel    = "info"
 )
 
@@ -12,6 +13,7 @@ const (
 type Config struct {
 	ServerAddr  string
 	StoragePath string
+	KeysDir     string
 	LogLevel    string
 }
 
@@ -21,6 +23,7 @@ func Load() (*Config, error) {
 	return &Config{
 		ServerAddr:  envOr("EKVS_SERVER_ADDR", defaultServerAddr),
 		StoragePath: envOr("EKVS_STORAGE_PATH", defaultStoragePath),
+		KeysDir:     envOr("EKVS_KEYS_DIR", defaultKeysDir),
 		LogLevel:    envOr("EKVS_LOG_LEVEL", defaultLogLevel),
 	}, nil
 }
