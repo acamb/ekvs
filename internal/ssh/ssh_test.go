@@ -65,10 +65,12 @@ func TestParsePrivateKey(t *testing.T) {
 }
 
 func TestParsePrivateKey_UnsupportedType(t *testing.T) {
-	// DSA PEM — unsupported type. We simulate this by trying a certificate
-	// PEM if available; otherwise we verify the sentinel is exported correctly.
-	if !errors.Is(ErrUnsupportedKeyType, ErrUnsupportedKeyType) {
-		t.Fatal("ErrUnsupportedKeyType sentinel broken")
+	// Build a PEM block with an unsupported type. golang.org/x/crypto/ssh
+	// ParseRawPrivateKey will return an error for an unknown header.
+	unsupportedPEM := []byte("-----BEGIN UNSUPPORTED KEY TYPE-----\nYWJj\n-----END UNSUPPORTED KEY TYPE-----\n")
+	_, _, err := ParsePrivateKey(unsupportedPEM)
+	if err == nil {
+		t.Fatal("expected error for unsupported PEM type, got nil")
 	}
 }
 

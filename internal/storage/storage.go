@@ -13,6 +13,9 @@ const currentVersion = 1
 
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]{1,128}$`)
 
+// sanitizeRE matches characters that are not safe for use in filesystem paths.
+var sanitizeRE = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
+
 // projectFile is the on-disk representation of a single project.
 type projectFile struct {
 	Version int               `json:"version"`
@@ -70,8 +73,7 @@ func validateName(name string) error {
 
 // sanitizeID replaces every character outside [a-zA-Z0-9_\-] with '_'.
 func sanitizeID(userID string) string {
-	safe := regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
-	return safe.ReplaceAllString(userID, "_")
+	return sanitizeRE.ReplaceAllString(userID, "_")
 }
 
 // projectPath returns the full filesystem path for a project file.
@@ -111,17 +113,18 @@ func writeProject(path string, pf *projectFile) error {
 	}
 	tmpPath := tmp.Name()
 	defer func() {
-		// Clean up temp file on any error path.
+		// Best-effort cleanup: remove the temp file if it still exists after
+		// an error. The error returned to the caller takes precedence.
 		if _, statErr := os.Stat(tmpPath); statErr == nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 	}()
 	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
+		_ = tmp.Close() // best-effort; the Chmod error is what we report
 		return fmt.Errorf("writeProject chmod: %w", err)
 	}
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close() // best-effort; the Write error is what we report
 		return fmt.Errorf("writeProject write: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

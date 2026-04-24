@@ -434,20 +434,39 @@ func TestReadProjectInvalidJSON(t *testing.T) {
 
 // --- writeProject error paths ---
 
-func TestWriteProjectReadOnlyDir(t *testing.T) {
+func TestWriteProject_CreateTempFails(t *testing.T) {
 	s := newStore(t)
 	mustCreateProject(t, s, testUser, "proj")
 
-	// Make the user directory read-only so CreateTemp fails.
+	// Make the user directory non-writable so os.CreateTemp fails.
 	userDir := filepath.Join(s.dir, sanitizeID(testUser))
-	if err := os.Chmod(userDir, 0500); err != nil {
+	if err := os.Chmod(userDir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(userDir, 0700) })
+	t.Cleanup(func() { _ = os.Chmod(userDir, 0o700) })
 
-	err := s.SetSecret(testUser, "proj", "KEY", "val")
+	err := s.SetSecret(testUser, "proj", "key", "val")
 	if err == nil {
-		t.Error("expected error when directory is read-only")
+		t.Fatal("expected error when directory is not writable, got nil")
+	}
+}
+
+func TestWriteProject_RenameFails(t *testing.T) {
+	s := newStore(t)
+	mustCreateProject(t, s, testUser, "proj")
+
+	// Make the user directory execute-only: CreateTemp succeeds (the dir
+	// entry for the new file is created by the kernel) but os.Rename fails
+	// because renaming requires write permission on the directory.
+	userDir := filepath.Join(s.dir, sanitizeID(testUser))
+	if err := os.Chmod(userDir, 0o100); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(userDir, 0o700) })
+
+	err := s.SetSecret(testUser, "proj", "key", "val")
+	if err == nil {
+		t.Fatal("expected error when rename cannot proceed, got nil")
 	}
 }
 

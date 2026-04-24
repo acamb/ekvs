@@ -21,9 +21,9 @@ func Encrypt(key, plaintext []byte) (string, error) {
 		return "", fmt.Errorf("creating AES cipher: %w", err)
 	}
 
-	// cipher.NewGCM never fails for a standard AES block cipher (block size
-	// is always 16 bytes); the error is checked for correctness only.
-	gcm, _ := cipher.NewGCM(block)
+	// cipher.NewGCM only fails if block.BlockSize() != 16. aes.NewCipher always
+	// produces a 16-byte block cipher, so this error is structurally impossible.
+	gcm, _ := cipher.NewGCM(block) //nolint:errcheck
 
 	nonce := make([]byte, nonceSize)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -53,8 +53,9 @@ func Decrypt(key []byte, encoded string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: creating AES cipher: %s", ErrDecryptionFailed, err)
 	}
 
-	// cipher.NewGCM never fails for a standard AES block cipher.
-	gcm, _ := cipher.NewGCM(block)
+	// cipher.NewGCM only fails if block.BlockSize() != 16. aes.NewCipher always
+	// produces a 16-byte block cipher, so this error is structurally impossible.
+	gcm, _ := cipher.NewGCM(block) //nolint:errcheck
 
 	nonce, ciphertext := blob[:nonceSize], blob[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)

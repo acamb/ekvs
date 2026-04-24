@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -62,13 +61,13 @@ func AuthMiddleware(ks *KeyStore, window time.Duration, next http.Handler) http.
 		}
 
 		if err := internalssh.Verify(pub, []byte(message), sigBlob); err != nil {
-			writeError(w, http.StatusUnauthorized, fmt.Sprintf("%s", ErrInvalidSignature))
+			writeError(w, http.StatusUnauthorized, ErrInvalidSignature.Error())
 			return
 		}
 
 		if err := internalssh.CheckTimestamp(tsTime, window); err != nil {
 			if errors.Is(err, internalssh.ErrReplayDetected) {
-				writeError(w, http.StatusUnauthorized, fmt.Sprintf("%s", ErrReplayDetected))
+				writeError(w, http.StatusUnauthorized, ErrReplayDetected.Error())
 			} else {
 				writeError(w, http.StatusUnauthorized, "timestamp check failed")
 			}
@@ -98,5 +97,8 @@ func NewContextWithUserID(ctx context.Context, userID string) context.Context {
 func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	// Encoding errors are intentionally ignored: WriteHeader has already been
+	// called, so the response status is committed and there is nothing useful
+	// we can do if the body write fails.
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }

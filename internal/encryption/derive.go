@@ -37,8 +37,10 @@ func DeriveKey(signer crypto.Signer) ([]byte, error) {
 
 	r := hkdf.New(sha256.New, ikm, nil, []byte(hkdfInfo))
 	key := make([]byte, derivedLen)
-	// hkdf.New with sha256.New never returns an error from Read.
-	_, _ = io.ReadFull(r, key)
+	// hkdf.New with sha256.New never returns an error from Read: the HKDF
+	// construction over SHA-256 is infallible by design. Both return values
+	// are explicitly discarded to make the intent clear to static analysers.
+	_, _ = io.ReadFull(r, key) //nolint:errcheck
 	return key, nil
 }
 
@@ -63,7 +65,7 @@ func extractIKM(signer crypto.Signer) ([]byte, error) {
 		}
 		var buf bytes.Buffer
 		for _, p := range k.Primes {
-			buf.Write(p.Bytes())
+			_, _ = buf.Write(p.Bytes()) // bytes.Buffer.Write never returns an error
 		}
 		return buf.Bytes(), nil
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"ekvs/internal/auth"
@@ -184,6 +186,32 @@ func TestHandleListSecrets_MissingUserID(t *testing.T) {
 	w := do(h, httptest.NewRequest("GET", "/projects/p/secrets", nil))
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("got %d, want 500", w.Code)
+	}
+}
+
+// TestHandleListSecrets_FileCorrupted verifies that when the project file on
+// disk contains invalid JSON the handler returns a non-200 error response.
+// This exercises both the ListSecrets and GetSecret internal-error branches.
+func TestHandleListSecrets_FileCorrupted(t *testing.T) {
+	// Use an explicit directory so we can locate the project file.
+	storeDir := t.TempDir()
+	st, err := storage.New(storeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedProject(t, st, "u1", "p", map[string]string{"key1": "val1"})
+
+	// Overwrite the project file with invalid JSON to trigger a parse error.
+	// sanitizeID("u1") == "u1" (all chars are safe).
+	projectFile := filepath.Join(storeDir, "u1", "p.json")
+	if err := os.WriteFile(projectFile, []byte("{invalid json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	h := SecretsHandler(st, noopLogger{})
+	w := do(h, requestWithUser("GET", "/projects/p/secrets", "u1"))
+	if w.Code == http.StatusOK {
+		t.Errorf("expected non-200 for corrupted project file, got 200")
 	}
 }
 

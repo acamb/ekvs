@@ -9,6 +9,9 @@ import (
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	// Encoding errors are intentionally ignored: WriteHeader has already been
+	// called, so the response status is committed and there is nothing useful
+	// we can do if the body write fails.
 	_ = json.NewEncoder(w).Encode(v)
 }
 

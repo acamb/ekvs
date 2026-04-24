@@ -27,6 +27,40 @@ const (
 	fpRsa       = "SHA256:SEntZDq/Xy8VAbcik2N+8U2s6ilxLg+7ZPhai3NfbBE"
 )
 
+// mustNewKeyStore creates a KeyStore from dir, failing the test on error.
+func mustNewKeyStore(t *testing.T, dir string) *KeyStore {
+	t.Helper()
+	ks, err := NewKeyStore(dir)
+	if err != nil {
+		t.Fatalf("NewKeyStore: %v", err)
+	}
+	return ks
+}
+
+// mustParseSigner reads and parses a private key from path, failing on error.
+func mustParseSigner(t *testing.T, path string) crypto.Signer {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", path, err)
+	}
+	signer, _, err := internalssh.ParsePrivateKey(data)
+	if err != nil {
+		t.Fatalf("ParsePrivateKey(%q): %v", path, err)
+	}
+	return signer
+}
+
+// mustSign signs msg with signer, failing the test on error.
+func mustSign(t *testing.T, signer crypto.Signer, msg []byte) []byte {
+	t.Helper()
+	blob, err := internalssh.Sign(signer, msg)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	return blob
+}
+
 // newKeysDir creates a temp directory and copies the requested .pub files into
 // it with the given filenames. Returns the directory path.
 func newKeysDir(t *testing.T, files map[string]string) string {
@@ -42,20 +76,6 @@ func newKeysDir(t *testing.T, files map[string]string) string {
 		}
 	}
 	return dir
-}
-
-// loadSigner parses the private key at path and returns a crypto.Signer.
-func loadSigner(t *testing.T, path string) crypto.Signer {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read signer %s: %v", path, err)
-	}
-	signer, _, err := internalssh.ParsePrivateKey(data)
-	if err != nil {
-		t.Fatalf("parse signer %s: %v", path, err)
-	}
-	return signer
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +111,7 @@ func TestLookup(t *testing.T) {
 		dir := newKeysDir(t, map[string]string{
 			"alice.pub": testdataDir + "/ed25519.pub",
 		})
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		pub, err := ks.Lookup(fpEd25519)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -105,7 +125,7 @@ func TestLookup(t *testing.T) {
 		dir := newKeysDir(t, map[string]string{
 			"alice.pub": testdataDir + "/ed25519.pub",
 		})
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		_, err := ks.Lookup(fpRsa)
 		if !errors.Is(err, ErrKeyNotFound) {
 			t.Errorf("got %v, want ErrKeyNotFound", err)
@@ -120,7 +140,7 @@ func TestLookup(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "bad.pub"), []byte("not a valid key"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		pub, err := ks.Lookup(fpEd25519)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -137,7 +157,7 @@ func TestLookup(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "alice.key"), data, 0600); err != nil {
 			t.Fatal(err)
 		}
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		_, err := ks.Lookup(fpEd25519)
 		if !errors.Is(err, ErrKeyNotFound) {
 			t.Errorf("got %v, want ErrKeyNotFound", err)
@@ -153,7 +173,7 @@ func TestLookup(t *testing.T) {
 		if err := os.WriteFile(locked, []byte("ssh-ed25519 AAAA fake"), 0000); err != nil {
 			t.Fatal(err)
 		}
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		pub, err := ks.Lookup(fpEd25519)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -165,13 +185,16 @@ func TestLookup(t *testing.T) {
 
 	t.Run("readdir fails", func(t *testing.T) {
 		dir := t.TempDir()
-		ks, _ := NewKeyStore(dir)
+		ks, err := NewKeyStore(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
 		// Remove read permission on the directory.
 		if err := os.Chmod(dir, 0000); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.Chmod(dir, 0700) })
-		_, err := ks.Lookup(fpEd25519)
+		t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+		_, err = ks.Lookup(fpEd25519)
 		if err == nil {
 			t.Error("expected error when dir is not readable")
 		}
@@ -183,7 +206,7 @@ func TestLookup(t *testing.T) {
 			"bob.pub":   testdataDir + "/ecdsa.pub",
 			"carol.pub": testdataDir + "/rsa.pub",
 		})
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		for _, fp := range []string{fpEd25519, fpEcdsa, fpRsa} {
 			if _, err := ks.Lookup(fp); err != nil {
 				t.Errorf("Lookup(%q): %v", fp, err)
@@ -198,7 +221,7 @@ func TestLookup(t *testing.T) {
 
 func TestList(t *testing.T) {
 	t.Run("empty dir", func(t *testing.T) {
-		ks, _ := NewKeyStore(t.TempDir())
+		ks := mustNewKeyStore(t, t.TempDir())
 		fps, err := ks.List()
 		if err != nil {
 			t.Fatal(err)
@@ -213,7 +236,7 @@ func TestList(t *testing.T) {
 
 	t.Run("one valid key", func(t *testing.T) {
 		dir := newKeysDir(t, map[string]string{"alice.pub": testdataDir + "/ed25519.pub"})
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		fps, err := ks.List()
 		if err != nil {
 			t.Fatal(err)
@@ -229,7 +252,7 @@ func TestList(t *testing.T) {
 			"bob.pub":   testdataDir + "/ecdsa.pub",
 			"carol.pub": testdataDir + "/rsa.pub",
 		})
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		fps, err := ks.List()
 		if err != nil {
 			t.Fatal(err)
@@ -246,9 +269,13 @@ func TestList(t *testing.T) {
 
 	t.Run("mix of valid, unparseable, and non-.pub files", func(t *testing.T) {
 		dir := newKeysDir(t, map[string]string{"alice.pub": testdataDir + "/ed25519.pub"})
-		os.WriteFile(filepath.Join(dir, "bad.pub"), []byte("garbage"), 0600)
-		os.WriteFile(filepath.Join(dir, "ignored.txt"), []byte("ssh-ed25519 AAAA..."), 0600)
-		ks, _ := NewKeyStore(dir)
+		if err := os.WriteFile(filepath.Join(dir, "bad.pub"), []byte("garbage"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "ignored.txt"), []byte("ssh-ed25519 AAAA..."), 0600); err != nil {
+			t.Fatal(err)
+		}
+		ks := mustNewKeyStore(t, dir)
 		fps, err := ks.List()
 		if err != nil {
 			t.Fatal(err)
@@ -260,11 +287,11 @@ func TestList(t *testing.T) {
 
 	t.Run("readdir fails", func(t *testing.T) {
 		dir := t.TempDir()
-		ks, _ := NewKeyStore(dir)
+		ks := mustNewKeyStore(t, dir)
 		if err := os.Chmod(dir, 0000); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.Chmod(dir, 0700) })
+		t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
 		_, err := ks.List()
 		if err == nil {
 			t.Error("expected error when dir is not readable")
@@ -294,10 +321,8 @@ func makeAuthTest(t *testing.T, ks *KeyStore, window time.Duration) (handler htt
 
 func TestAuthMiddleware(t *testing.T) {
 	dir := newKeysDir(t, map[string]string{"alice.pub": testdataDir + "/ed25519.pub"})
-	ks, _ := NewKeyStore(dir)
-
-	signerData, _ := os.ReadFile(testdataDir + "/ed25519")
-	signer, _, _ := internalssh.ParsePrivateKey(signerData)
+	ks := mustNewKeyStore(t, dir)
+	signer := mustParseSigner(t, testdataDir+"/ed25519")
 
 	const method = "GET"
 	const path = "/projects/test"
@@ -319,7 +344,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	sign := func(ts time.Time) (string, int64) {
 		msg := internalssh.CanonicalRequest(method, path, ts)
-		blob, _ := internalssh.Sign(signer, []byte(msg))
+		blob := mustSign(t, signer, []byte(msg))
 		return base64.StdEncoding.EncodeToString(blob), ts.Unix()
 	}
 
@@ -448,13 +473,12 @@ func TestAuthMiddleware(t *testing.T) {
 func TestUserIDFromContext(t *testing.T) {
 	t.Run("populated context", func(t *testing.T) {
 		dir := newKeysDir(t, map[string]string{"alice.pub": testdataDir + "/ed25519.pub"})
-		ks, _ := NewKeyStore(dir)
-		signerData, _ := os.ReadFile(testdataDir + "/ed25519")
-		signer, _, _ := internalssh.ParsePrivateKey(signerData)
+		ks := mustNewKeyStore(t, dir)
+		signer := mustParseSigner(t, testdataDir+"/ed25519")
 
 		ts := time.Now().UTC()
 		msg := internalssh.CanonicalRequest("GET", "/test", ts)
-		blob, _ := internalssh.Sign(signer, []byte(msg))
+		blob := mustSign(t, signer, []byte(msg))
 		sigB64 := base64.StdEncoding.EncodeToString(blob)
 
 		var gotUID string
@@ -494,7 +518,7 @@ func TestConcurrency(t *testing.T) {
 		"bob.pub":   testdataDir + "/ecdsa.pub",
 		"carol.pub": testdataDir + "/rsa.pub",
 	})
-	ks, _ := NewKeyStore(dir)
+	ks := mustNewKeyStore(t, dir)
 
 	const n = 50
 	var wg sync.WaitGroup
@@ -515,9 +539,10 @@ func TestConcurrency(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			// Mix Lookup and List.
-			ks.Lookup(fpRsa)
-			ks.List()
+			// Best-effort mix to exercise concurrent access; errors are
+			// checked exhaustively in the dedicated goroutines above.
+			_, _ = ks.Lookup(fpRsa)
+			_, _ = ks.List()
 		}()
 	}
 	wg.Wait()
