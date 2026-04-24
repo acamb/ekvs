@@ -42,44 +42,44 @@
 
 ---
 
-### Phase 2 — CLI Client
+### Phase 2 — TUI Client
 
-10. **cli_setup**
-    Scaffold CLI with `cobra`: root command, global flags (server URL, identity file), config file loading.
+10. **tui_setup**
+    Scaffold TUI with `bubbletea` v2: application entry point, navigation model, theme/styles.
 
-11. **cli_auth**
-    Commands to register a public key with the server and sign API requests using the user's private SSH key.
+11. **tui_auth**
+    TUI flows for SSH key selection; sign requests transparently during the session.
 
-12. **cli_encryption**
-    Integrate encryption primitives into the CLI: encrypt values before sending, decrypt values after receiving.
+12. **tui_encryption**
+    Integrate encryption primitives into the TUI session context.
 
-13. **cli_projects**
-    Commands: `project create`, `project list`, `project delete`.
+13. **tui_projects**
+    Project list screen: browse, create, and delete projects interactively.
 
-14. **cli_secrets**
-    Commands: `secret set`, `secret get`, `secret list`, `secret delete`.
+14. **tui_secrets**
+    Secret management screen: list keys, view/copy decrypted values, add/edit/delete secrets.
+
+15. **tui_ux_polish**
+    Loading indicators, error modals, keyboard shortcut help, and overall UX refinement.
 
 ---
 
-### Phase 3 — TUI Client
+### Phase 3 — CLI Client
 
-15. **tui_setup**
-    Scaffold TUI with `bubbletea` v2: application entry point, navigation model, theme/styles.
+16. **cli_setup**
+    Scaffold CLI with `cobra`: root command, global flags (server URL, identity file), config file loading.
 
-16. **tui_auth**
-    TUI flows for server registration and SSH key selection; sign requests transparently during the session.
+17. **cli_auth**
+    Commands to sign API requests using the user's private SSH key.
 
-17. **tui_encryption**
-    Integrate encryption primitives into the TUI session context.
+18. **cli_encryption**
+    Integrate encryption primitives into the CLI: encrypt values before sending, decrypt values after receiving.
 
-18. **tui_projects**
-    Project list screen: browse, create, and delete projects interactively.
+19. **cli_projects**
+    Commands: `project create`, `project list`, `project delete`.
 
-19. **tui_secrets**
-    Secret management screen: list keys, view/copy decrypted values, add/edit/delete secrets.
-
-20. **tui_ux_polish**
-    Loading indicators, error modals, keyboard shortcut help, and overall UX refinement.
+20. **cli_secrets**
+    Commands: `secret set`, `secret get`, `secret list`, `secret delete`.
 
 ---
 
