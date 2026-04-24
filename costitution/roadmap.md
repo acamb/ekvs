@@ -37,67 +37,67 @@
 8. **server_secrets_api**
    REST endpoints for secret management within a project: set, get, list, delete key-value pairs.
 
-9.**code cleanup**
+9. **code cleanup**
    Refactor and clean up server codebase: remove any temporary scaffolding, ensure consistent error handling and logging, resolve warnings.
 
 ---
 
 ### Phase 2 — CLI Client
 
-8. **cli_setup**
-   Scaffold CLI with `cobra`: root command, global flags (server URL, identity file), config file loading.
+10. **cli_setup**
+    Scaffold CLI with `cobra`: root command, global flags (server URL, identity file), config file loading.
 
-9. **cli_auth**
-   Commands to register a public key with the server and sign API requests using the user's private SSH key.
+11. **cli_auth**
+    Commands to register a public key with the server and sign API requests using the user's private SSH key.
 
-10. **cli_encryption**
+12. **cli_encryption**
     Integrate encryption primitives into the CLI: encrypt values before sending, decrypt values after receiving.
 
-11. **cli_projects**
+13. **cli_projects**
     Commands: `project create`, `project list`, `project delete`.
 
-12. **cli_secrets**
+14. **cli_secrets**
     Commands: `secret set`, `secret get`, `secret list`, `secret delete`.
 
 ---
 
 ### Phase 3 — TUI Client
 
-13. **tui_setup**
+15. **tui_setup**
     Scaffold TUI with `bubbletea` v2: application entry point, navigation model, theme/styles.
 
-14. **tui_auth**
+16. **tui_auth**
     TUI flows for server registration and SSH key selection; sign requests transparently during the session.
 
-15. **tui_encryption**
+17. **tui_encryption**
     Integrate encryption primitives into the TUI session context.
 
-16. **tui_projects**
+18. **tui_projects**
     Project list screen: browse, create, and delete projects interactively.
 
-17. **tui_secrets**
+19. **tui_secrets**
     Secret management screen: list keys, view/copy decrypted values, add/edit/delete secrets.
 
-18. **tui_ux_polish**
+20. **tui_ux_polish**
     Loading indicators, error modals, keyboard shortcut help, and overall UX refinement.
 
 ---
 
 ### Phase 4 — Integration Testing
 
-19. **integration_test_setup**
+21. **integration_test_setup**
     Create `tests/integration/` directory with `docker-compose.yml` (server container + client containers), `Makefile` target `integration-test`, and `README.md` runbook skeleton.
 
-20. **integration_test_server_cli**
+22. **integration_test_server_cli**
     Docker-based semi-manual integration scenarios covering server ↔ CLI communication: key registration, project CRUD, secret set/get/list/delete, encryption round-trip verification.
 
-21. **integration_test_server_tui**
+23. **integration_test_server_tui**
     Docker-based semi-manual integration scenarios covering server ↔ TUI communication: same flows as CLI scenarios but driven through the TUI interface.
 
 ---
 
 ### Phase 5 — CI Pipeline
 
-22. **ci_pipeline**
+24. **ci_pipeline**
     GitHub Actions workflow that runs on every push/PR to `main`: checkout, setup-go, `make test`, `make lint`. Integration tests are explicitly excluded from CI and remain manual only.
 
