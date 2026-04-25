@@ -19,7 +19,6 @@ type menuItem struct {
 func defaultMenuItems() []menuItem {
 	return []menuItem{
 		{ID: "projects", Label: "Projects"},
-		{ID: "secrets", Label: "Secrets"},
 		{ID: "settings", Label: "Settings"},
 		{ID: "quit", Label: "Quit"},
 	}
