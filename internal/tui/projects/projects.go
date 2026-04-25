@@ -204,6 +204,11 @@ func (m Model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.mode = modeCreate
 		m.input = ""
+	case "enter":
+		name := m.selectedName()
+		if name != "" {
+			return m, func() tea.Msg { return OpenSecretsMsg{Project: name} }
+		}
 	case "d":
 		if len(items) > 0 {
 			m.mode = modeDelete

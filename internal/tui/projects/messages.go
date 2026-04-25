@@ -8,6 +8,11 @@ import "errors"
 // The root model handles it by returning to the main menu.
 type BackMsg struct{}
 
+// OpenSecretsMsg is emitted when the user opens a project's secrets screen.
+type OpenSecretsMsg struct {
+	Project string
+}
+
 // FetchedMsg carries the project list returned by the server.
 type FetchedMsg struct {
 	Projects []string

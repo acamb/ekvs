@@ -265,3 +265,127 @@ func TestListProjects_NullProjects(t *testing.T) {
 		t.Errorf("expected empty non-nil slice, got %v", got)
 	}
 }
+
+// ── ListSecrets ───────────────────────────────────────────────────────────────
+
+func TestListSecrets_Success(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusOK, map[string]interface{}{
+		"secrets": []map[string]string{{"key": "k", "value": "blob"}},
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	got, err := c.ListSecrets("p")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].Key != "k" || got[0].Value != "blob" {
+		t.Errorf("got %v, want [{k blob}]", got)
+	}
+}
+
+func TestListSecrets_Empty(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusOK, map[string]interface{}{
+		"secrets": []map[string]string{},
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	got, err := c.ListSecrets("p")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
+	}
+}
+
+func TestListSecrets_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusUnauthorized, nil))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	_, err := c.ListSecrets("p")
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("want ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestListSecrets_NotFound(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusNotFound, nil))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	_, err := c.ListSecrets("p")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("want ErrNotFound, got %v", err)
+	}
+}
+
+// ── SetSecret ─────────────────────────────────────────────────────────────────
+
+func TestSetSecret_Success(t *testing.T) {
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"key":"k"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	if err := c.SetSecret("p", "k", "blob"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody["value"] != "blob" {
+		t.Errorf("body value = %q, want %q", gotBody["value"], "blob")
+	}
+}
+
+func TestSetSecret_NotFound(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusNotFound, nil))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	err := c.SetSecret("p", "k", "blob")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestSetSecret_BadRequest(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusBadRequest, map[string]string{"error": "bad"}))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	err := c.SetSecret("p", "k", "blob")
+	var se *ServerError
+	if !errors.As(err, &se) {
+		t.Errorf("want *ServerError, got %v", err)
+	}
+}
+
+// ── DeleteSecret ──────────────────────────────────────────────────────────────
+
+func TestDeleteSecret_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	if err := c.DeleteSecret("p", "k"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteSecret_NotFound(t *testing.T) {
+	srv := httptest.NewServer(jsonHandler(http.StatusNotFound, nil))
+	defer srv.Close()
+
+	c := New(srv.URL, testSession(t))
+	err := c.DeleteSecret("p", "k")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("want ErrNotFound, got %v", err)
+	}
+}

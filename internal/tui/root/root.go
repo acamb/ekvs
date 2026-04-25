@@ -12,6 +12,7 @@ import (
 	"ekvs/internal/tui/client"
 	tuiconfig "ekvs/internal/tui/config"
 	"ekvs/internal/tui/projects"
+	"ekvs/internal/tui/secrets"
 	"ekvs/internal/tui/session"
 	"ekvs/internal/tui/theme"
 	"ekvs/internal/tui/wizard"
@@ -28,6 +29,7 @@ const (
 	screenMain
 	screenAuth
 	screenProjects
+	screenSecrets
 )
 
 // moveCursor returns a new cursor position after moving delta steps (+1 or -1)
@@ -48,6 +50,7 @@ type Model struct {
 	main          mainModel
 	authModel     auth.Model
 	projectsModel projects.Model
+	secretsModel  secrets.Model
 	pendingScreen screen
 }
 
@@ -102,6 +105,8 @@ func (m Model) Init() tea.Cmd {
 		return m.authModel.Init()
 	case screenProjects:
 		return m.projectsModel.Init()
+	case screenSecrets:
+		return m.secretsModel.Init()
 	}
 	return nil
 }
@@ -185,6 +190,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projects.BackMsg:
 		m.screen = screenMain
 		return m, nil
+
+	case projects.OpenSecretsMsg:
+		m.secretsModel = secrets.New(msg.Project, newClient(m), &m.session, m.theme)
+		m.screen = screenSecrets
+		return m, m.secretsModel.Init()
+
+	case secrets.BackMsg:
+		m.projectsModel = projects.New(newClient(m), m.theme)
+		m.screen = screenProjects
+		return m, m.projectsModel.Init()
 	}
 
 	// Delegate to the active screen.
@@ -215,6 +230,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pm, cmd := m.projectsModel.UpdateTyped(msg)
 		m.projectsModel = pm
 		return m, cmd
+
+	case screenSecrets:
+		sm, cmd := m.secretsModel.UpdateTyped(msg)
+		m.secretsModel = sm
+		return m, cmd
 	}
 
 	return m, nil
@@ -233,6 +253,8 @@ func (m Model) View() tea.View {
 		return m.authModel.View()
 	case screenProjects:
 		return m.projectsModel.View()
+	case screenSecrets:
+		return m.secretsModel.View()
 	}
 	return tea.NewView("")
 }

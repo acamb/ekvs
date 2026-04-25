@@ -559,3 +559,23 @@ func TestProjectsModel_DeleteOnEmptyList(t *testing.T) {
 		t.Errorf("want modeList when pressing d on empty list, got %v", m.mode)
 	}
 }
+
+// ── enter opens secrets ───────────────────────────────────────────────────────
+
+func TestProjectsModel_EnterOpensSecrets(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, []string{"myproject"})
+
+	_, cmd := sendKey(m, "enter")
+	if cmd == nil {
+		t.Fatal("expected a command, got nil")
+	}
+	msg := cmd()
+	osm, ok := msg.(OpenSecretsMsg)
+	if !ok {
+		t.Fatalf("want OpenSecretsMsg, got %T", msg)
+	}
+	if osm.Project != "myproject" {
+		t.Errorf("want Project=%q, got %q", "myproject", osm.Project)
+	}
+}
