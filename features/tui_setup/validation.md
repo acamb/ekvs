@@ -1,43 +1,27 @@
 # validation.md — tui_setup
-
-## Criteri di accettazione
-
-La feature è considerata completa quando **tutti** i seguenti criteri sono soddisfatti.
-
+## Acceptance criteria
+The feature is considered complete when **all** of the following criteria are met.
 ---
-
-## 1. Unit test
-
+## 1. Unit tests
 ```bash
 make test
 ```
-
-- Output: `ok  ekvs/internal/tui/config` e `ok  ekvs/internal/tui/theme` senza errori.
-- Copertura statement ≥ 90% su `internal/tui/config` e `internal/tui/theme`.
-- Nessuna regressione sugli altri package (`internal/auth`, `internal/config`, `internal/encryption`, `internal/ssh`, `internal/storage`, `internal/server`).
-
-Oppure in modo mirato:
-
+- Output: `ok  ekvs/internal/tui/config` and `ok  ekvs/internal/tui/theme` with no errors.
+- Statement coverage ≥ 90% on `internal/tui/config` and `internal/tui/theme`.
+- No regressions on other packages (`internal/auth`, `internal/config`, `internal/encryption`, `internal/ssh`, `internal/storage`, `internal/server`).
+Or, targeted:
 ```bash
 go test ./internal/tui/... -v -cover
 ```
-
 ---
-
-## 2. Compilazione
-
+## 2. Build
 ```bash
 go build ./cmd/tui/...
 ```
-
-Deve completarsi senza errori né warning.
-
+Must complete with no errors or warnings.
 ---
-
-## 3. Avvio con file di configurazione valido — profilo singolo
-
-Creare un file di configurazione con un solo profilo:
-
+## 3. Startup with a valid config — single profile
+Create a configuration file with one profile:
 ```bash
 cat > /tmp/test-ekvs-tui.yaml <<EOF
 profiles:
@@ -47,121 +31,89 @@ profiles:
     theme:         "hacker"
 EOF
 ```
-
-Avviare il TUI:
-
+Start the TUI:
 ```bash
 go run ./cmd/tui --config /tmp/test-ekvs-tui.yaml
 ```
-
-Verificare:
-- La schermata di selezione profilo **non** viene mostrata (un solo profilo → avvio diretto).
-- Il TUI si avvia e mostra il menu principale con sfondo nero e testo verde (tema `hacker`).
-- Le quattro voci `Projects`, `Secrets`, `Settings`, `Quit` sono visibili.
-- La prima voce è evidenziata con il cursore visivo.
-
+Verify:
+- The profile selection screen is **not** shown (single profile → direct start).
+- The TUI starts and shows the main menu with black background and green text (hacker theme).
+- The four items `Projects`, `Secrets`, `Settings`, `Quit` are visible.
+- The first item is highlighted with a visual cursor.
 ---
-
-## 4. Navigazione del menu
-
-Con il TUI avviato (qualsiasi tema):
-
-| Azione | Comportamento atteso |
-|--------|----------------------|
-| Tasto `↓` o `j` | Il cursore si sposta alla voce successiva |
-| Tasto `↑` o `k` | Il cursore si sposta alla voce precedente |
-| `↑` dalla prima voce | Wrap-around: il cursore va all'ultima voce |
-| `↓` dall'ultima voce | Wrap-around: il cursore va alla prima voce |
-| `Enter` su `Quit` | L'applicazione termina senza errori |
-| `q` da qualsiasi voce | L'applicazione termina senza errori |
-| `Ctrl+C` | L'applicazione termina senza errori |
-| `Enter` su `Projects`, `Secrets`, `Settings` | Nessun crash (comportamento placeholder) |
-
+## 4. Menu navigation
+With the TUI running (any theme):
+| Action | Expected behaviour |
+|--------|-------------------|
+| `↓` or `j` | Cursor moves to the next item |
+| `↑` or `k` | Cursor moves to the previous item |
+| `↑` from the first item | Wrap-around: cursor moves to the last item |
+| `↓` from the last item | Wrap-around: cursor moves to the first item |
+| `Enter` on `Quit` | Application exits cleanly |
+| `q` from any item | Application exits cleanly |
+| `Ctrl+C` | Application exits cleanly |
+| `Enter` on `Projects`, `Secrets`, `Settings` | No crash (placeholder behaviour) |
 ---
-
-## 5. Tema adattativo
-
-Creare un file con `theme: "adaptive"` e avviarlo:
-
+## 5. Adaptive theme
 ```bash
 cat > /tmp/adaptive.yaml <<EOF
 profiles:
-  - name: "locale"
+  - name: "local"
     server_url: "http://127.0.0.1:8080"
     identity_file: "~/.ssh/id_ed25519"
     theme: "adaptive"
 EOF
 go run ./cmd/tui --config /tmp/adaptive.yaml
 ```
-
-Il TUI deve adattarsi al tema del terminale. Verifica visiva.
-
+The TUI must adapt to the terminal's colour scheme. Visual verification only.
 ---
-
-## 6. Selezione profilo — file con più profili
-
-Creare un file con due profili:
-
+## 6. Profile selection — multiple profiles
+Create a file with two profiles:
 ```bash
 cat > /tmp/multi.yaml <<EOF
 profiles:
-  - name:          "locale"
+  - name:          "local"
     server_url:    "http://127.0.0.1:8080"
     identity_file: "~/.ssh/id_ed25519"
     theme:         "adaptive"
-  - name:          "produzione"
+  - name:          "production"
     server_url:    "https://ekvs.example.com"
     identity_file: "~/.ssh/id_rsa"
     theme:         "hacker"
 EOF
-
 go run ./cmd/tui --config /tmp/multi.yaml
 ```
-
-Verificare:
-- Viene mostrata la schermata di selezione profilo **prima** del menu principale.
-- Ogni riga mostra il nome e l'URL del profilo.
-- Navigazione con `↑↓` e selezione con `Enter`.
-- Scegliendo `locale` → menu principale con tema `adaptive`.
-- Scegliendo `produzione` → menu principale con tema `hacker`.
-- Premendo `q`/`Ctrl+C` nella schermata di selezione → uscita dall'applicazione.
-
+Verify:
+- The profile selection screen is shown **before** the main menu.
+- Each row shows the profile name and its URL.
+- Navigation with `↑↓` and selection with `Enter`.
+- Selecting `local` → main menu with adaptive theme.
+- Selecting `production` → main menu with hacker theme.
+- Pressing `q`/`Ctrl+C` on the selection screen → application exits.
 ---
-
-## 7. Nomi duplicati nel file di configurazione
-
+## 7. Duplicate names in the configuration file
 ```bash
 cat > /tmp/dup.yaml <<EOF
 profiles:
-  - name: "locale"
+  - name: "local"
     server_url: "http://127.0.0.1:8080"
-  - name: "locale"
+  - name: "local"
     server_url: "http://127.0.0.1:9090"
 EOF
-
 go run ./cmd/tui --config /tmp/dup.yaml
 ```
-
-Il programma deve terminare con errore fatale che indica il nome duplicato. Exit code non zero.
-
+The program must exit with a fatal error indicating the duplicate name. Non-zero exit code.
 ---
-
-## 8. Lista profili vuota
-
+## 8. Empty profiles list
 ```bash
 cat > /tmp/empty.yaml <<EOF
 profiles: []
 EOF
-
 go run ./cmd/tui --config /tmp/empty.yaml
 ```
-
-Il wizard di primo avvio deve essere mostrato (comportamento identico al file assente).
-
+The first-run wizard must be shown (same behaviour as an absent file).
 ---
-
-## 9. Tema non riconosciuto
-
+## 9. Unknown theme
 ```bash
 cat > /tmp/bad-theme.yaml <<EOF
 profiles:
@@ -170,95 +122,52 @@ profiles:
     identity_file: "~/.ssh/id_ed25519"
     theme: "invalid_theme"
 EOF
-
 go run ./cmd/tui --config /tmp/bad-theme.yaml
 ```
-
-Il programma deve terminare con errore fatale e messaggio che indica il nome del tema non riconosciuto. Exit code non zero.
-
+The program must exit with a fatal error indicating the unrecognised theme name. Non-zero exit code.
 ---
-
-## 10. Flag `--config` su file mancante
-
+## 10. `--config` flag pointing to a missing file
 ```bash
 go run ./cmd/tui --config /tmp/nonexistent-config.yaml
 ```
-
-Il programma deve terminare con errore fatale e messaggio descrittivo. Exit code non zero.
-
+The program must exit with a fatal error and a descriptive message. Non-zero exit code.
 ---
-
-## 11. Wizard di primo avvio — file di default assente
-
-Spostarsi in una directory temporanea dove `ekvs-tui.yaml` non esiste:
-
+## 11. First-run wizard — default config absent
+Move to a temporary directory where `ekvs-tui.yaml` does not exist:
 ```bash
 mkdir -p /tmp/ekvs-test-dir && cd /tmp/ekvs-test-dir
 go run /home/andrea/src/ekvs/cmd/tui
 ```
-
-Verificare:
-- Il TUI non si avvia direttamente, ma compare il wizard interattivo.
-- Il wizard mostra un campo per `name` (vuoto), poi campi pre-compilati per `server_url` (default: `http://127.0.0.1:8080`) e `identity_file`.
-- Dopo aver completato tutti i campi, viene chiesto se salvare la configurazione.
-
+Verify:
+- The TUI does not start directly; the interactive wizard appears.
+- The wizard shows an empty field for `name` (placeholder: `e.g. local`), then pre-filled fields for `server_url` and `identity_file`.
+- After completing all fields, the user is asked whether to save the configuration.
 ---
-
-## 12. Wizard — salvataggio configurazione
-
-Proseguendo dal punto 11:
-
-- Rispondere `s` alla domanda di salvataggio.
-- Viene chiesto il nome del file (default: `ekvs-tui.yaml`).
-- Premere `Enter` per accettare il default.
-- Verificare che il file `ekvs-tui.yaml` sia stato creato nella directory corrente con i valori inseriti nella struttura a profili.
-- Verificare che il TUI si avvii normalmente dopo il salvataggio.
-
+## 12. Wizard — save configuration
+Continuing from step 11:
+- Answer `y` at the save prompt.
+- Enter the file name (accept the default `ekvs-tui.yaml` by pressing Enter).
+- Verify that `ekvs-tui.yaml` was created in the current directory with the entered values.
+- Verify that the TUI starts normally after saving.
 ```bash
 cat /tmp/ekvs-test-dir/ekvs-tui.yaml
 ```
-
-Il contenuto deve rispecchiare i valori inseriti nel wizard, nel formato:
-```yaml
-profiles:
-  - name: "..."
-    server_url: "..."
-    identity_file: "..."
-    theme: "adaptive"
-```
-
+The content must match the values entered in the wizard, in the `profiles:` structure.
 ---
-
-## 13. Wizard — skip salvataggio
-
-Ripetere il punto 11 rispondendo `n` alla domanda di salvataggio:
-
-- Il TUI si avvia normalmente senza creare alcun file.
-- Al successivo avvio nella stessa directory, il wizard viene ripresentato (nessun file salvato).
-
+## 13. Wizard — skip save
+Repeat step 11, answering `n` at the save prompt:
+- The TUI starts normally without creating any file.
+- On the next run in the same directory, the wizard is shown again (no file was saved).
 ---
-
-## 14. File YAML malformato
-
+## 14. Malformed YAML
 ```bash
-echo "questo: non: è: yaml: valido: [" > /tmp/malformed.yaml
+echo "this: is: not: valid: yaml: [" > /tmp/malformed.yaml
 go run ./cmd/tui --config /tmp/malformed.yaml
 ```
-
-Il programma deve terminare con errore fatale e messaggio che indica il problema di parsing YAML. Exit code non zero.
-
+The program must exit with a fatal error indicating the YAML parse problem. Non-zero exit code.
 ---
-
-## 15. File di esempio
-
-Verificare che `ekvs-tui.yaml.example` esista nella root del repository e contenga almeno due profili di esempio con tutti i campi (`name`, `server_url`, `identity_file`, `theme`).
-
+## 15. Example file
+Verify that `ekvs-tui.yaml.example` exists in the repository root and contains at least two example profiles with all fields (`name`, `server_url`, `identity_file`, `theme`).
 ```bash
 cat ekvs-tui.yaml.example
 ```
-
-
-
-
-
-

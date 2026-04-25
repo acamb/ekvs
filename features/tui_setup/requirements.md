@@ -1,248 +1,185 @@
 # requirements.md — tui_setup
-
-## Decisioni utente
-
-| Decisione | Scelta |
-|-----------|--------|
-| Navigazione | Menu principale a lista selezionabile (frecce su/giù + Invio) |
-| File di configurazione | `ekvs-tui.yaml` nella directory corrente (default); override con `--config <path>` |
-| File assente (path di default) | Wizard interattivo: chiede server URL e identity file, offre salvataggio con scelta nome |
-| File assente (`--config` esplicito) | Errore fatale con messaggio descrittivo, exit code non zero |
-| File malformato | Errore fatale con messaggio descrittivo |
-| Tema di default | Adattativo (`adaptive`, usa `lipgloss.AdaptiveColor`) |
-| Temi disponibili | `adaptive` (default), `hacker` (verde su nero) |
-| Selezione tema | Campo `theme` nel file YAML; valore non riconosciuto → errore fatale |
-| Librerie UI | `charm.land/bubbletea/v2 v2.0.6`, `github.com/charmbracelet/bubbles v1.0.0`, `github.com/charmbracelet/lipgloss v1.1.0` |
-| Profili multipli | Il file YAML può contenere una lista di profili, ognuno con `name`, `server_url`, `identity_file`, `theme` |
-| Selezione profilo | Se il file contiene un solo profilo, viene usato direttamente; se ne contiene più d'uno, all'avvio viene mostrata una schermata di selezione profilo |
-| Flag `--config` | Incluso in questa fase; parsato con `flag` stdlib |
-| Package interni | `internal/tui/config`, `internal/tui/theme`, `internal/tui/app` |
-
+## User decisions
+| Decision | Choice |
+|----------|--------|
+| Navigation | Main menu as a selectable list (arrow keys + Enter) |
+| Configuration file | `ekvs-tui.yaml` in the current directory (default); override with `--config <path>` |
+| File absent (default path) | Interactive wizard: asks for server URL and identity file, offers to save with custom name |
+| File absent (`--config` explicit) | Fatal error with descriptive message, non-zero exit code |
+| Malformed file | Fatal error with descriptive message |
+| Default theme | Adaptive (`adaptive`, uses `lipgloss.AdaptiveColor`) |
+| Available themes | `adaptive` (default), `hacker` (green on black) |
+| Theme selection | `theme` field in YAML; unrecognised value → fatal error |
+| Multiple profiles | The YAML file may contain a list of profiles, each with `name`, `server_url`, `identity_file`, `theme` |
+| Profile selection | If the file contains one profile it is used directly; if it contains more than one, a profile selection screen is shown at startup |
+| UI libraries | `charm.land/bubbletea/v2 v2.0.6`, `github.com/charmbracelet/bubbles v1.0.0`, `github.com/charmbracelet/lipgloss v1.1.0` |
+| `--config` flag | Included in this phase; parsed with stdlib `flag` |
+| Internal packages | `internal/tui/config`, `internal/tui/theme`, `internal/tui/app` |
 ---
-
 ## Scope
-
 ### In scope
-- Aggiunta dipendenze `charm.land/bubbletea/v2`, `github.com/charmbracelet/bubbles`, `github.com/charmbracelet/lipgloss`.
-- Package `internal/tui/config`: struct `Profile` e `ConfigFile`, funzioni `LoadFromFile` e `Save`, logica di merge con i default.
-- Package `internal/tui/theme`: interfaccia `Theme`, implementazioni `AdaptiveTheme` e `HackerTheme`, factory `NewTheme(name string) (Theme, error)`.
-- Package `internal/tui/app`: modello bubbletea principale con menu a lista (voci placeholder), navigazione tastiera.
-- Schermata di selezione profilo (bubbletea, usa `bubbles/list`) mostrata all'avvio se il file contiene più di un profilo.
-- Wizard di primo avvio: raccolta interattiva di `name`, `server_url` e `identity_file` tramite `bubbles/textinput`, offerta di salvataggio su file.
-- `cmd/tui/main.go`: flag `--config`, bootstrap completo (caricamento file → wizard se file assente → selezione profilo se più d'uno → avvio app bubbletea).
-- Unit test per `internal/tui/config` e `internal/tui/theme`.
-- File di esempio `ekvs-tui.yaml.example` nella root del repository.
-
+- Add dependencies `charm.land/bubbletea/v2`, `github.com/charmbracelet/bubbles`, `github.com/charmbracelet/lipgloss`.
+- Package `internal/tui/config`: structs `Profile` and `ConfigFile`, functions `LoadFromFile` and `Save`, default-merge logic.
+- Package `internal/tui/theme`: `Theme` interface, `AdaptiveTheme` and `HackerTheme` implementations, factory `NewTheme(name string) (Theme, error)`.
+- Package `internal/tui/app`: main bubbletea model with a placeholder list menu, keyboard navigation.
+- Profile selection screen (bubbletea) shown at startup when the file contains more than one profile.
+- First-run wizard: interactive collection of `name`, `server_url` and `identity_file` via a custom text input, with an offer to save to a file.
+- `cmd/tui/main.go`: `--config` flag, full bootstrap (load file → wizard if absent → profile selection if multiple → start bubbletea app).
+- Unit tests for `internal/tui/config` and `internal/tui/theme`.
+- Example file `ekvs-tui.yaml.example` in the repository root.
 ### Out of scope
-- Chiamate HTTP al server (rinviate a `tui_auth` e successive).
-- Autenticazione SSH (rinviata a `tui_auth`).
-- Schermata Projects, Secrets, Settings (schermate placeholder sufficienti).
-- Hot-reload della configurazione.
-- Validazione semantica di `server_url` e `identity_file` (es. raggiungibilità server, esistenza file).
-- CRUD profili dall'interno dell'applicazione (aggiungere/rimuovere profili a runtime).
-
+- HTTP calls to the server (deferred to `tui_auth` and later).
+- SSH authentication (deferred to `tui_auth`).
+- Projects, Secrets, Settings screens (placeholder screens are sufficient).
+- Hot-reload of the configuration.
+- Semantic validation of `server_url` and `identity_file` (e.g. server reachability, file existence).
+- Profile CRUD from within the running application (add/remove profiles at runtime).
 ---
-
-## Struttura YAML — `ekvs-tui.yaml`
-
-Il file contiene una lista di profili. Ogni profilo ha un `name` univoco e i propri parametri di connessione. Il campo `theme` è per-profilo: permette temi diversi per server diversi.
-
+## YAML structure — `ekvs-tui.yaml`
+The file contains a list of profiles. Each profile has a unique `name` and its own connection parameters. The `theme` field is per-profile, allowing different themes for different servers.
 ```yaml
-# ekvs-tui.yaml — configurazione del client TUI EKVS
+# ekvs-tui.yaml — EKVS TUI client configuration
 profiles:
-  - name:          "locale"
+  - name:          "local"
     server_url:    "http://127.0.0.1:8080"
     identity_file: "~/.ssh/id_ed25519"
     theme:         "adaptive"
-
-  - name:          "produzione"
+  - name:          "production"
     server_url:    "https://ekvs.example.com"
     identity_file: "~/.ssh/id_rsa"
     theme:         "hacker"
 ```
-
-**Regole:**
-- `name` deve essere non vuoto e univoco all'interno del file; se due profili hanno lo stesso nome, il caricamento restituisce errore.
-- Se `theme` è omesso in un profilo, viene usato il default `"adaptive"`.
-- Se `server_url` o `identity_file` sono omessi, vengono usati i rispettivi default.
-- Un file con lista `profiles` vuota è equivalente a un file assente (viene avviato il wizard).
-
+**Rules:**
+- `name` must be non-empty and unique within the file; duplicate names cause a load error.
+- If `theme` is omitted in a profile, the default `"adaptive"` is used.
+- If `server_url` or `identity_file` are omitted, their respective defaults are used.
+- A file with an empty `profiles` list is treated as absent (wizard is started).
 ---
-
 ## Package `internal/tui/config`
-
 ```go
 package config
-
-// Profile rappresenta un singolo profilo di connessione.
+// Profile represents a single connection profile.
 type Profile struct {
     Name         string `yaml:"name"`
     ServerURL    string `yaml:"server_url"`
     IdentityFile string `yaml:"identity_file"`
     Theme        string `yaml:"theme"`
 }
-
-// ConfigFile è la struttura radice del file YAML.
+// ConfigFile is the root structure of the YAML configuration file.
 type ConfigFile struct {
     Profiles []Profile `yaml:"profiles"`
 }
-
-// DefaultProfile restituisce un Profile con i valori di default.
-// Usato come base per il merge e come valore iniziale del wizard.
+// DefaultProfile returns a Profile populated with default values.
 func DefaultProfile() Profile
-
-// LoadFromFile carica il ConfigFile dal file YAML a path.
-//   - Se required è false e il file non esiste, restituisce (nil, nil)
-//     per segnalare che il wizard deve essere avviato.
-//   - Se required è true e il file non esiste, restituisce errore.
-//   - Se il file è malformato YAML, restituisce errore.
-//   - Se due profili hanno lo stesso name, restituisce errore.
-//   - Se la lista profiles è vuota, restituisce (nil, nil) come nel caso file assente.
+// LoadFromFile loads a ConfigFile from the YAML file at path.
+//   - Returns (nil, nil) if required is false and the file does not exist,
+//     or if the profiles list is empty.
+//   - Returns an error if required is true and the file does not exist.
+//   - Returns an error if the file contains invalid YAML.
+//   - Returns an error if a profile has an empty name or two profiles share the same name.
 func LoadFromFile(path string, required bool) (*ConfigFile, error)
-
-// Save serializza cf in YAML e scrive il file a path.
+// Save serialises cf to YAML and writes it to the file at path.
 func Save(path string, cf *ConfigFile) error
 ```
-
-**Default per ogni `Profile`:**
-
-| Campo | Default |
+**Defaults per `Profile`:**
+| Field | Default |
 |-------|---------|
 | `ServerURL` | `"http://127.0.0.1:8080"` |
 | `IdentityFile` | `"~/.ssh/id_ed25519"` |
 | `Theme` | `"adaptive"` |
-
-I campi omessi in un profilo del file YAML vengono riempiti con i valori di `DefaultProfile()` dopo l'unmarshal.
-
+Fields omitted in a YAML profile are filled with `DefaultProfile()` values after unmarshal.
 ---
-
 ## Package `internal/tui/theme`
-
 ```go
 package theme
-
 import "github.com/charmbracelet/lipgloss"
-
-// Theme raggruppa tutti gli stili lipgloss usati dall'applicazione.
+// Theme groups all lipgloss styles used by the application.
 type Theme interface {
-    // Colori semantici
-    PrimaryColor() lipgloss.Color
-    SecondaryColor() lipgloss.Color
-    BackgroundColor() lipgloss.Color
-    ErrorColor() lipgloss.Color
-
-    // Stili predefiniti
+    PrimaryColor() lipgloss.TerminalColor
+    SecondaryColor() lipgloss.TerminalColor
+    BackgroundColor() lipgloss.TerminalColor
+    ErrorColor() lipgloss.TerminalColor
     TitleStyle() lipgloss.Style
     MenuItemStyle() lipgloss.Style
     SelectedMenuItemStyle() lipgloss.Style
     StatusBarStyle() lipgloss.Style
     ErrorStyle() lipgloss.Style
 }
-
-// NewTheme restituisce il Theme corrispondente al nome fornito.
-// Nomi validi: "adaptive", "hacker".
-// Restituisce errore per nomi non riconosciuti.
+// NewTheme returns the Theme corresponding to the given name.
+// Valid names: "adaptive", "hacker".
+// Returns an error for unrecognised names.
 func NewTheme(name string) (Theme, error)
 ```
-
-**Temi:**
-- `AdaptiveTheme`: usa `lipgloss.AdaptiveColor{Light: "<light>", Dark: "<dark>"}` per adattarsi al terminale.
-- `HackerTheme`: verde `#00FF41` su sfondo nero `#0D0208`, ispirato al Matrix.
-
+**Themes:**
+- `AdaptiveTheme`: uses `lipgloss.AdaptiveColor{Light: "...", Dark: "..."}` to adapt to the terminal.
+- `HackerTheme`: green `#00FF41` on black background `#0D0208`, Matrix-inspired.
 ---
-
 ## Package `internal/tui/app`
-
 ```go
 package app
-
 import (
     tea "charm.land/bubbletea/v2"
     "ekvs/internal/tui/theme"
 )
-
-// MenuItem rappresenta una voce del menu principale.
+// MenuItem represents a main menu entry.
 type MenuItem struct {
     Label string
     ID    string
 }
-
-// Model è il modello bubbletea principale dell'applicazione.
-type Model struct {
-    items    []MenuItem
-    cursor   int
-    theme    theme.Theme
-    quitting bool
-}
-
-// New crea un nuovo Model con il tema fornito.
+// Model is the main bubbletea model of the application.
+type Model struct { /* unexported fields */ }
+// New creates a new Model with the given theme.
 func New(t theme.Theme) Model
-
-// Init, Update, View implementano l'interfaccia tea.Model.
-func (m Model) Init() (Model, tea.Cmd)
+// Init, Update, View implement the tea.Model interface.
+func (m Model) Init() tea.Cmd
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
-func (m Model) View() string
+func (m Model) View() tea.View
 ```
-
-**Voci menu placeholder (in ordine):**
-
+**Placeholder menu items (in order):**
 | ID | Label |
 |----|-------|
 | `projects` | `Projects` |
 | `secrets` | `Secrets` |
 | `settings` | `Settings` |
 | `quit` | `Quit` |
-
-**Tasti:**
-- `↑` / `k`: voce precedente
-- `↓` / `j`: voce successiva
-- `Enter`: seleziona voce (placeholder: stampa il nome, in fasi successive navigherà verso la schermata corrispondente)
-- `q` / `Ctrl+C`: esce dall'applicazione
-
+**Keys:**
+- `↑` / `k`: previous item
+- `↓` / `j`: next item
+- `Enter`: select item (`quit` exits; others are no-ops in this phase)
+- `q` / `Ctrl+C`: exit the application
 ---
-
 ## `cmd/tui/main.go`
-
 ```go
-// Flag supportati:
-//   --config <path>   percorso al file di configurazione YAML (default: "ekvs-tui.yaml")
+// Supported flags:
+//   --config <path>   path to the YAML configuration file (default: "ekvs-tui.yaml")
 //
-// Logica di bootstrap:
-//  1. Parsare i flag.
-//  2. Determinare se il path di config è quello di default o esplicito.
-//  3. Chiamare config.LoadFromFile(path, explicit).
-//     - (nil, nil)          → file assente o profili vuoti: avviare il wizard di primo avvio.
-//     - (nil, err)          → file mancante (explicit=true) o malformato: log.Fatal.
-//     - (cf, nil) con 1 profilo  → usa direttamente quel profilo.
-//     - (cf, nil) con N profili  → mostra la schermata di selezione profilo.
-//  4. Chiamare theme.NewTheme(profile.Theme) → errore fatale se nome non riconosciuto.
-//  5. Creare app.New(t) e avviare tea.NewProgram(model).Run().
+// Bootstrap logic:
+//  1. Parse flags.
+//  2. Determine whether the config path is the default or was explicitly provided.
+//  3. Call config.LoadFromFile(path, explicit).
+//     - (nil, nil)          → file absent or empty: start the first-run wizard.
+//     - (nil, err)          → missing (explicit=true) or malformed: log.Fatal.
+//     - (cf, nil) 1 profile → use that profile directly.
+//     - (cf, nil) N profiles → show the profile selection screen.
+//  4. Call theme.NewTheme(profile.Theme) → fatal error if unrecognised.
+//  5. Create app.New(t) and run tea.NewProgram(model).Run().
 ```
-
-**Wizard di primo avvio** (package `internal/tui/wizard`):
-- Raccoglie `name`, `server_url` e `identity_file` tramite `bubbles/textinput` (pre-compilati con i default).
-- Chiede: `Salvare la configurazione? [s/N]`.
-- Se sì, chiede il nome del file (default: `ekvs-tui.yaml`) e chiama `config.Save(path, &ConfigFile{Profiles: []Profile{p}})`.
-- Restituisce il `Profile` raccolto.
-
-**Schermata di selezione profilo** (package `internal/tui/profileselect` o come modello in `internal/tui/app`):
-- Lista dei profili con `name` e `server_url` visibili.
-- Navigazione `↑↓/jk`, `Enter` per selezionare, `q`/`Ctrl+C` per uscire.
-- Restituisce il `Profile` scelto.
-
+**First-run wizard** (package `internal/tui/wizard`):
+- Collects `name`, `server_url` and `identity_file` via a custom bubbletea v2 text input (pre-filled with defaults for URL and identity file).
+- Asks: `Save configuration to file? [y/N]`.
+- If yes, asks for the file name (default: `ekvs-tui.yaml`) and calls `config.Save`.
+- Returns the collected `Profile`.
+**Profile selection screen** (package `internal/tui/profileselect`):
+- List of profiles showing `name` and `server_url` on each row.
+- Navigation `↑↓/jk`, `Enter` to select, `q`/`Ctrl+C` to quit (returns an error).
+- Returns the chosen `Profile`.
 ---
-
-## Dipendenze da aggiungere
-
+## Dependencies to add
 ```bash
 go get charm.land/bubbletea/v2@v2.0.6
 go get github.com/charmbracelet/bubbles@v1.0.0
 go get github.com/charmbracelet/lipgloss@v1.1.0
 go mod tidy
 ```
-
-
-
-
-
-
+> **Note:** `github.com/charmbracelet/bubbles v1.0.0` targets bubbletea v1 and is therefore
+> **not used directly** in TUI models. All interactive components use `charm.land/bubbletea/v2`.
