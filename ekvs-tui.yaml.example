@@ -1,0 +1,14 @@
+# ekvs-tui.yaml.example — configurazione di esempio del client TUI EKVS
+# Rinominare in ekvs-tui.yaml oppure specificare il path con --config <path>
+
+profiles:
+  - name:          "locale"
+    server_url:    "http://127.0.0.1:8080"
+    identity_file: "~/.ssh/id_ed25519"
+    theme:         "adaptive"   # valori: adaptive | hacker
+
+  - name:          "produzione"
+    server_url:    "https://ekvs.example.com"
+    identity_file: "~/.ssh/id_rsa"
+    theme:         "hacker"
+
