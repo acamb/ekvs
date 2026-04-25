@@ -50,11 +50,11 @@
 11. **tui_auth**
     TUI flows for SSH key selection; sign requests transparently during the session.
 
-12. **tui_encryption**
-    Integrate encryption primitives into the TUI session context.
-
-13. **tui_projects**
+12. **tui_projects**
     Project list screen: browse, create, and delete projects interactively.
+
+13. **tui_encryption**
+    Integrate encryption primitives into the TUI session context.
 
 14. **tui_secrets**
     Secret management screen: list keys, view/copy decrypted values, add/edit/delete secrets.
