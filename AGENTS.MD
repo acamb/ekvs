@@ -12,3 +12,4 @@ Each task in the roadmap will be implemented one by one creating a new directory
 * requirements.md - clarifies requirements, scope and decisions. Always update this document as you work on the feature and keep track of user choices if you need to ask the user for clarification.
 * validation.md - describes how to validate the implementation of the feature, how to know if it's working as expected and how to test it.
 
+The project is in english.

@@ -60,7 +60,7 @@
     Secret management screen: list keys, view/copy decrypted values, add/edit/delete secrets.
 
 15. **tui_profiles**
-    Profile management screen: create a new connection profile (server URL, SSH identity file, theme), edit the fields of the currently active profile, and delete an existing profile. Changes are persisted to the YAML configuration file. Deleting the active profile redirects the user to the profile selection screen (or the first-run wizard if no profiles remain).
+    Profile management screen: create a new connection profile (server URL, SSH identity file, theme), edit the fields of the currently active profile, delete an existing profile, and **switch to a different profile**. Changes are persisted to the YAML configuration file. Deleting the active profile redirects the user to the profile selection screen (or the first-run wizard if no profiles remain). **Switching to a different profile clears all session state (loaded private key, passphrase, fingerprint) before loading the new profile**, then re-triggers the auth flow the next time an authenticated operation is requested.
 
 16. **tui_ux_polish**
     Loading indicators, error modals, keyboard shortcut help, and overall UX refinement.
@@ -103,3 +103,11 @@
 
 25. **ci_pipeline**
     GitHub Actions workflow that runs on every push/PR to `main`: checkout, setup-go, `make test`, `make lint`. Integration tests are explicitly excluded from CI and remain manual only.
+
+---
+
+### Phase 6 — SSH Agent Support
+
+26. **ssh_agent_support**
+    Add opt-in support for signing via the SSH agent (`SSH_AUTH_SOCK`). When the agent is available and the configured `identity_file` public key is present in the agent, both TUI and CLI clients will delegate signing to the agent instead of loading the private key from disk, so no passphrase prompt is needed. Falls back to the current file-based flow if the agent is unavailable or does not hold the required key. The `internal/ssh` package is extended with an `AgentSigner` helper; TUI and CLI auth flows are updated to probe the agent first.
+
