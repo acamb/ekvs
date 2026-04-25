@@ -59,45 +59,47 @@
 14. **tui_secrets**
     Secret management screen: list keys, view/copy decrypted values, add/edit/delete secrets.
 
-15. **tui_ux_polish**
+15. **tui_profiles**
+    Profile management screen: create a new connection profile (server URL, SSH identity file, theme), edit the fields of the currently active profile, and delete an existing profile. Changes are persisted to the YAML configuration file. Deleting the active profile redirects the user to the profile selection screen (or the first-run wizard if no profiles remain).
+
+16. **tui_ux_polish**
     Loading indicators, error modals, keyboard shortcut help, and overall UX refinement.
 
 ---
 
 ### Phase 3 — CLI Client
 
-16. **cli_setup**
+17. **cli_setup**
     Scaffold CLI with `cobra`: root command, global flags (server URL, identity file), config file loading.
 
-17. **cli_auth**
+18. **cli_auth**
     Commands to sign API requests using the user's private SSH key.
 
-18. **cli_encryption**
+19. **cli_encryption**
     Integrate encryption primitives into the CLI: encrypt values before sending, decrypt values after receiving.
 
-19. **cli_projects**
+20. **cli_projects**
     Commands: `project create`, `project list`, `project delete`.
 
-20. **cli_secrets**
+21. **cli_secrets**
     Commands: `secret set`, `secret get`, `secret list`, `secret delete`.
 
 ---
 
 ### Phase 4 — Integration Testing
 
-21. **integration_test_setup**
+22. **integration_test_setup**
     Create `tests/integration/` directory with `docker-compose.yml` (server container + client containers), `Makefile` target `integration-test`, and `README.md` runbook skeleton.
 
-22. **integration_test_server_cli**
+23. **integration_test_server_cli**
     Docker-based semi-manual integration scenarios covering server ↔ CLI communication: key registration, project CRUD, secret set/get/list/delete, encryption round-trip verification.
 
-23. **integration_test_server_tui**
+24. **integration_test_server_tui**
     Docker-based semi-manual integration scenarios covering server ↔ TUI communication: same flows as CLI scenarios but driven through the TUI interface.
 
 ---
 
 ### Phase 5 — CI Pipeline
 
-24. **ci_pipeline**
+25. **ci_pipeline**
     GitHub Actions workflow that runs on every push/PR to `main`: checkout, setup-go, `make test`, `make lint`. Integration tests are explicitly excluded from CI and remain manual only.
-
