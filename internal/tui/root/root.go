@@ -4,11 +4,17 @@
 package root
 
 import (
+	"crypto"
+
 	tea "charm.land/bubbletea/v2"
 
+	"ekvs/internal/tui/auth"
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/session"
 	"ekvs/internal/tui/theme"
 	"ekvs/internal/tui/wizard"
+
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // screen identifies which "page" is currently active.
@@ -18,6 +24,7 @@ const (
 	screenWizard screen = iota
 	screenProfileSelect
 	screenMain
+	screenAuth
 )
 
 // moveCursor returns a new cursor position after moving delta steps (+1 or -1)
@@ -31,10 +38,13 @@ type Model struct {
 	screen  screen
 	theme   theme.Theme
 	profile tuiconfig.Profile
+	session session.Session
 
 	wizard        wizard.Model
 	profileSelect profileSelectModel
 	main          mainModel
+	authModel     auth.Model
+	pendingScreen screen
 }
 
 // New creates the root model.
@@ -84,6 +94,8 @@ func (m Model) Init() tea.Cmd {
 		return m.profileSelect.Init()
 	case screenMain:
 		return m.main.Init()
+	case screenAuth:
+		return m.authModel.Init()
 	}
 	return nil
 }
@@ -101,6 +113,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case profileChosenMsg:
+		t := resolveTheme(msg.profile.Theme, m.theme)
+		m.theme = t
+		m.profile = msg.profile
+		m.screen = screenMain
+		m.main = newMainModel(t)
+		return m, nil
+
+	case triggerAuthMsg:
+		m.pendingScreen = msg.returnTo
+		m.authModel = auth.New(m.profile.IdentityFile, m.theme)
+		m.screen = screenAuth
+		return m, m.authModel.Init()
+
+	case auth.AuthSuccessMsg:
+		var signer crypto.Signer
+		var pub gossh.PublicKey
+		if msg.Signer != nil {
+			signer = msg.Signer.(crypto.Signer)
+		}
+		if msg.PublicKey != nil {
+			pub = msg.PublicKey.(gossh.PublicKey)
+		}
+		m.session = session.Session{
+			Signer:      signer,
+			PublicKey:   pub,
+			Fingerprint: msg.Fingerprint,
+		}
+		m.screen = m.pendingScreen
+		return m, nil
+
+	case auth.AuthCancelMsg:
+		m.screen = screenMain
+		return m, nil
+
+	case profileSwitchMsg:
+		m.session.Clear()
 		t := resolveTheme(msg.profile.Theme, m.theme)
 		m.theme = t
 		m.profile = msg.profile
@@ -127,6 +175,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		mm, cmd := m.main.updateTyped(msg)
 		m.main = mm
 		return m, cmd
+
+	case screenAuth:
+		am, cmd := m.authModel.UpdateTyped(msg)
+		m.authModel = am
+		return m, cmd
 	}
 
 	return m, nil
@@ -141,6 +194,8 @@ func (m Model) View() tea.View {
 		return m.profileSelect.View()
 	case screenMain:
 		return m.main.View()
+	case screenAuth:
+		return m.authModel.View()
 	}
 	return tea.NewView("")
 }

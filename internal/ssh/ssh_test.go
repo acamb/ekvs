@@ -74,6 +74,59 @@ func TestParsePrivateKey_UnsupportedType(t *testing.T) {
 	}
 }
 
+func TestParsePrivateKey_PassphraseRequired(t *testing.T) {
+	for _, fixture := range []string{"ed25519-passphrase", "rsa-passphrase"} {
+		t.Run(fixture, func(t *testing.T) {
+			pemBytes := readFile(t, fixture)
+			_, _, err := ParsePrivateKey(pemBytes)
+			if !errors.Is(err, ErrPassphraseRequired) {
+				t.Fatalf("expected ErrPassphraseRequired, got %v", err)
+			}
+		})
+	}
+}
+
+func TestParsePrivateKeyWithPassphrase(t *testing.T) {
+	tests := []struct {
+		name       string
+		fixture    string
+		passphrase string
+		wantErr    bool
+	}{
+		{name: "ed25519 correct passphrase", fixture: "ed25519-passphrase", passphrase: "testpass"},
+		{name: "rsa correct passphrase", fixture: "rsa-passphrase", passphrase: "testpass"},
+		{name: "ed25519 wrong passphrase", fixture: "ed25519-passphrase", passphrase: "wrongpass", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pemBytes := readFile(t, tc.fixture)
+			signer, pub, err := ParsePrivateKeyWithPassphrase(pemBytes, []byte(tc.passphrase))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if signer == nil || pub == nil {
+				t.Fatal("expected signer and public key, got nil")
+			}
+			// Round-trip: sign + verify
+			msg := []byte("round-trip test message")
+			sigBlob, err := Sign(signer, msg)
+			if err != nil {
+				t.Fatalf("Sign: %v", err)
+			}
+			if err := Verify(pub, msg, sigBlob); err != nil {
+				t.Fatalf("Verify: %v", err)
+			}
+		})
+	}
+}
+
 // ── ParseAuthorizedKey ────────────────────────────────────────────────────────
 
 func TestParseAuthorizedKey(t *testing.T) {

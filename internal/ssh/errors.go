@@ -20,4 +20,8 @@ var (
 	// decodes successfully but the key type is not supported (i.e. not RSA,
 	// ECDSA, or Ed25519).
 	ErrUnsupportedKeyType = errors.New("unsupported key type")
+
+	// ErrPassphraseRequired is returned by ParsePrivateKey when the PEM block
+	// is encrypted and a passphrase is required to decrypt it.
+	ErrPassphraseRequired = errors.New("passphrase required")
 )
