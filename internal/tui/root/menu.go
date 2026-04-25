@@ -18,7 +18,6 @@ type menuItem struct {
 // preventing accidental mutation of a shared global slice.
 func defaultMenuItems() []menuItem {
 	return []menuItem{
-		{ID: "authenticate", Label: "[A] Authenticate"},
 		{ID: "projects", Label: "Projects"},
 		{ID: "secrets", Label: "Secrets"},
 		{ID: "settings", Label: "Settings"},
@@ -60,8 +59,8 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.items[m.cursor].ID {
 			case "quit":
 				return m, tea.Quit
-			case "authenticate":
-				return m, func() tea.Msg { return triggerAuthMsg{returnTo: screenMain} }
+			case "projects":
+				return m, func() tea.Msg { return triggerProjectsMsg{} }
 			}
 		case "q", "ctrl+c":
 			return m, tea.Quit

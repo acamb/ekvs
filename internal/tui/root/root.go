@@ -9,7 +9,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"ekvs/internal/tui/auth"
+	"ekvs/internal/tui/client"
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/projects"
 	"ekvs/internal/tui/session"
 	"ekvs/internal/tui/theme"
 	"ekvs/internal/tui/wizard"
@@ -25,6 +27,7 @@ const (
 	screenProfileSelect
 	screenMain
 	screenAuth
+	screenProjects
 )
 
 // moveCursor returns a new cursor position after moving delta steps (+1 or -1)
@@ -44,6 +47,7 @@ type Model struct {
 	profileSelect profileSelectModel
 	main          mainModel
 	authModel     auth.Model
+	projectsModel projects.Model
 	pendingScreen screen
 }
 
@@ -96,8 +100,15 @@ func (m Model) Init() tea.Cmd {
 		return m.main.Init()
 	case screenAuth:
 		return m.authModel.Init()
+	case screenProjects:
+		return m.projectsModel.Init()
 	}
 	return nil
+}
+
+// newClient builds a signed HTTP client from the current profile and session.
+func newClient(m Model) *client.Client {
+	return client.New(m.profile.ServerURL, &m.session)
 }
 
 // Update implements tea.Model.
@@ -141,6 +152,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Fingerprint: msg.Fingerprint,
 		}
 		m.screen = m.pendingScreen
+		if m.pendingScreen == screenProjects {
+			m.projectsModel = projects.New(newClient(m), m.theme)
+			return m, m.projectsModel.Init()
+		}
 		return m, nil
 
 	case auth.AuthCancelMsg:
@@ -154,6 +169,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.profile = msg.profile
 		m.screen = screenMain
 		m.main = newMainModel(t)
+		return m, nil
+
+	case triggerProjectsMsg:
+		if !m.session.IsAuthenticated() {
+			m.pendingScreen = screenProjects
+			m.authModel = auth.New(m.profile.IdentityFile, m.theme)
+			m.screen = screenAuth
+			return m, m.authModel.Init()
+		}
+		m.projectsModel = projects.New(newClient(m), m.theme)
+		m.screen = screenProjects
+		return m, m.projectsModel.Init()
+
+	case projects.BackMsg:
+		m.screen = screenMain
 		return m, nil
 	}
 
@@ -180,6 +210,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		am, cmd := m.authModel.UpdateTyped(msg)
 		m.authModel = am
 		return m, cmd
+
+	case screenProjects:
+		pm, cmd := m.projectsModel.UpdateTyped(msg)
+		m.projectsModel = pm
+		return m, cmd
 	}
 
 	return m, nil
@@ -196,6 +231,8 @@ func (m Model) View() tea.View {
 		return m.main.View()
 	case screenAuth:
 		return m.authModel.View()
+	case screenProjects:
+		return m.projectsModel.View()
 	}
 	return tea.NewView("")
 }
