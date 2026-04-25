@@ -1,10 +1,12 @@
 package root
 
 import (
+	"os"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
+	internalssh "ekvs/internal/ssh"
 	"ekvs/internal/tui/auth"
 	tuiconfig "ekvs/internal/tui/config"
 	"ekvs/internal/tui/theme"
@@ -48,17 +50,27 @@ func TestRoot_AuthSuccess(t *testing.T) {
 	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
 	m.pendingScreen = screenMain
 
+	pemBytes, err := os.ReadFile("../../../internal/ssh/testdata/ed25519")
+	if err != nil {
+		t.Fatalf("read key: %v", err)
+	}
+	signer, pub, err := internalssh.ParsePrivateKey(pemBytes)
+	if err != nil {
+		t.Fatalf("parse key: %v", err)
+	}
+	fp := internalssh.Fingerprint(pub)
+
 	next, _ := m.Update(auth.AuthSuccessMsg{
-		Signer:      nil,
-		PublicKey:   nil,
-		Fingerprint: "SHA256:test",
+		Signer:      signer,
+		PublicKey:   pub,
+		Fingerprint: fp,
 	})
 	rm := next.(Model)
 	if rm.screen != screenMain {
 		t.Errorf("expected screenMain after AuthSuccessMsg, got %v", rm.screen)
 	}
-	if rm.session.Fingerprint != "SHA256:test" {
-		t.Errorf("expected fingerprint SHA256:test, got %q", rm.session.Fingerprint)
+	if rm.session.Fingerprint != fp {
+		t.Errorf("expected fingerprint %q, got %q", fp, rm.session.Fingerprint)
 	}
 }
 

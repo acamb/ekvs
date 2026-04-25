@@ -146,10 +146,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.PublicKey != nil {
 			pub = msg.PublicKey.(gossh.PublicKey)
 		}
-		m.session = session.Session{
-			Signer:      signer,
-			PublicKey:   pub,
-			Fingerprint: msg.Fingerprint,
+		if err := m.session.SetAuthenticated(signer, pub, msg.Fingerprint); err != nil {
+			// Key derivation failed (unsupported key type). Return to main menu.
+			m.screen = screenMain
+			return m, nil
 		}
 		m.screen = m.pendingScreen
 		if m.pendingScreen == screenProjects {
