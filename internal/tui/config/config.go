@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,11 +24,41 @@ type ConfigFile struct {
 	Profiles []Profile `yaml:"profiles"`
 }
 
+// ExpandHome replaces a leading "~" with the user home directory obtained via
+// os.UserHomeDir(). The path is returned unchanged when it does not start with
+// "~" or when the home directory cannot be determined.
+// filepath.Join handles the platform separator so the result is always correct
+// on both Linux/macOS and Windows.
+func ExpandHome(path string) string {
+	if !strings.HasPrefix(path, "~") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	// Strip leading "~" (and any immediately following separator) before joining.
+	return filepath.Join(home, path[1:])
+}
+
+// SSHDir returns the platform-appropriate SSH configuration directory:
+// <home>/.ssh on Linux/macOS and <home>\.ssh on Windows.
+// Returns an empty string and an error when os.UserHomeDir() fails.
+func SSHDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("ssh dir: %w", err)
+	}
+	return filepath.Join(home, ".ssh"), nil
+}
+
 // DefaultProfile returns a Profile populated with default values.
+// IdentityFile is returned as an expanded absolute path so callers never need
+// to handle "~" expansion themselves.
 func DefaultProfile() Profile {
 	return Profile{
 		ServerURL:    "http://127.0.0.1:8080",
-		IdentityFile: "~/.ssh/id_ed25519",
+		IdentityFile: ExpandHome("~/.ssh/id_ed25519"),
 		Theme:        "adaptive",
 	}
 }
@@ -102,5 +134,77 @@ func Save(path string, cf *ConfigFile) error {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("error writing file %s: %w", path, err)
 	}
+	return nil
+}
+
+// ── CRUD helpers ─────────────────────────────────────────────────────────────
+
+// FindProfile returns the profile whose Name matches name together with its
+// zero-based index in the Profiles slice. The third return value is false when
+// no profile with that name exists.
+func (cf *ConfigFile) FindProfile(name string) (Profile, int, bool) {
+	for i, p := range cf.Profiles {
+		if p.Name == name {
+			return p, i, true
+		}
+	}
+	return Profile{}, -1, false
+}
+
+// UpsertProfile performs a true upsert on the Profiles list:
+//   - if no profile with the same Name exists, the profile is appended;
+//   - if a profile with the same Name already exists, it is replaced in-place.
+//
+// applyDefaults is called on the profile before it is stored so that blank
+// optional fields receive their canonical values.
+// Returns an error when profile.Name is empty.
+func (cf *ConfigFile) UpsertProfile(profile Profile) error {
+	if profile.Name == "" {
+		return errors.New("profile name cannot be empty")
+	}
+	applyDefaults(&profile)
+	_, i, found := cf.FindProfile(profile.Name)
+	if found {
+		cf.Profiles[i] = profile
+	} else {
+		cf.Profiles = append(cf.Profiles, profile)
+	}
+	return nil
+}
+
+// UpdateProfile is a rename-safe update: it locates the entry by oldName,
+// validates that the new name is unique (unless the name is unchanged), applies
+// defaults, and replaces the entry in-place.
+//
+// Returns an error when:
+//   - profile.Name is empty;
+//   - oldName is not found in the list;
+//   - the new name conflicts with a different existing profile.
+func (cf *ConfigFile) UpdateProfile(oldName string, profile Profile) error {
+	if profile.Name == "" {
+		return errors.New("profile name cannot be empty")
+	}
+	_, idx, found := cf.FindProfile(oldName)
+	if !found {
+		return fmt.Errorf("profile %q not found", oldName)
+	}
+	if profile.Name != oldName {
+		if _, _, exists := cf.FindProfile(profile.Name); exists {
+			return fmt.Errorf("profile name %q already exists", profile.Name)
+		}
+	}
+	applyDefaults(&profile)
+	cf.Profiles[idx] = profile
+	return nil
+}
+
+// DeleteProfile removes the profile with the given name from the list.
+// Returns an error when no profile with that name exists.
+func (cf *ConfigFile) DeleteProfile(name string) error {
+	_, idx, found := cf.FindProfile(name)
+	if !found {
+		return fmt.Errorf("profile %q not found", name)
+	}
+	cf.Profiles = append(cf.Profiles[:idx], cf.Profiles[idx+1:]...)
 	return nil
 }

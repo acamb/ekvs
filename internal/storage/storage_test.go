@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -95,6 +96,9 @@ func TestCreateProject(t *testing.T) {
 	})
 
 	t.Run("file mode 0600", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Unix file permission bits not enforced on Windows")
+		}
 		s := newStore(t)
 		mustCreateProject(t, s, testUser, "proj")
 		path := projectPath(s.dir, testUser, "proj")
@@ -435,6 +439,9 @@ func TestReadProjectInvalidJSON(t *testing.T) {
 // --- writeProject error paths ---
 
 func TestWriteProject_CreateTempFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	s := newStore(t)
 	mustCreateProject(t, s, testUser, "proj")
 
@@ -452,6 +459,9 @@ func TestWriteProject_CreateTempFails(t *testing.T) {
 }
 
 func TestWriteProject_RenameFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	s := newStore(t)
 	mustCreateProject(t, s, testUser, "proj")
 
@@ -473,6 +483,9 @@ func TestWriteProject_RenameFails(t *testing.T) {
 // --- DeleteProject non-IsNotExist stat error ---
 
 func TestDeleteProjectFileReadOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	s := newStore(t)
 	mustCreateProject(t, s, testUser, "proj")
 
@@ -493,6 +506,9 @@ func TestDeleteProjectFileReadOnly(t *testing.T) {
 // --- ListProjects non-ErrNotExist error ---
 
 func TestListProjectsReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	s := newStore(t)
 	mustCreateProject(t, s, testUser, "proj")
 

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"ekvs/internal/auth"
@@ -256,6 +257,9 @@ func TestEndToEnd(t *testing.T) {
 // CreateProject (which calls MkdirAll) returns an unexpected error.
 func breakStore(t *testing.T, dir string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	if err := os.Chmod(dir, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -279,6 +283,9 @@ func TestHandleCreateProject_InternalError(t *testing.T) {
 }
 
 func TestHandleListProjects_InternalError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	tmp := t.TempDir()
 	st, err := storage.New(tmp)
 	if err != nil {
@@ -302,6 +309,9 @@ func TestHandleListProjects_InternalError(t *testing.T) {
 }
 
 func TestHandleDeleteProject_InternalError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory permissions not enforced on Windows")
+	}
 	tmp := t.TempDir()
 	st, err := storage.New(tmp)
 	if err != nil {

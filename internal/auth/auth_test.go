@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -286,6 +287,9 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("readdir fails", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("os.Chmod directory permissions not enforced on Windows")
+		}
 		dir := t.TempDir()
 		ks := mustNewKeyStore(t, dir)
 		if err := os.Chmod(dir, 0000); err != nil {
