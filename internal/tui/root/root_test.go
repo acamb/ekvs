@@ -389,3 +389,51 @@ func TestRoot_NoProfiles_ShowsWizard(t *testing.T) {
 		t.Errorf("expected screenWizard on startup with no config, got %v", m.screen)
 	}
 }
+
+// TestRoot_WindowSizeMsg_UpdatesDimensions verifies that a tea.WindowSizeMsg
+// updates the width and height fields of the root model.
+func TestRoot_WindowSizeMsg_UpdatesDimensions(t *testing.T) {
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+
+	if m.width != 0 || m.height != 0 {
+		t.Fatalf("expected zero dimensions before first WindowSizeMsg, got %dx%d", m.width, m.height)
+	}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	rm := next.(Model)
+
+	if rm.width != 120 {
+		t.Errorf("expected width=120, got %d", rm.width)
+	}
+	if rm.height != 40 {
+		t.Errorf("expected height=40, got %d", rm.height)
+	}
+}
+
+// TestRoot_WindowSizeMsg_Propagated verifies that a tea.WindowSizeMsg is
+// forwarded to the active sub-model (here: profilesModel which stores width).
+func TestRoot_WindowSizeMsg_Propagated(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	cfg := &tuiconfig.ConfigFile{
+		Profiles: []tuiconfig.Profile{
+			{Name: "a", Theme: "adaptive"},
+		},
+	}
+	m := New(cfg, "", th)
+	m.screen = screenProfiles
+	m.profilesModel = profiles.New(cfg, "", "a", th)
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	rm := next.(Model)
+
+	// The root must have updated its own dimensions.
+	if rm.width != 100 {
+		t.Errorf("root width not updated: want 100, got %d", rm.width)
+	}
+	// The profiles model receives the message through the dispatch loop.
+	// We verify it did not panic and the root dimensions are correct.
+	// (profiles.Model will expose width after Task 8; here we just smoke-test propagation.)
+	if rm.screen != screenProfiles {
+		t.Errorf("screen changed unexpectedly: got %v", rm.screen)
+	}
+}

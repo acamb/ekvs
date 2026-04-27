@@ -55,12 +55,18 @@ func smokeTheme(t *testing.T, th theme.Theme) {
 	if th.ErrorColor() == nil {
 		t.Error("ErrorColor is nil")
 	}
-	// Styles: just verify calls don't panic
+	// Styles: just verify calls don't panic and return a usable Style.
 	_ = th.TitleStyle()
 	_ = th.MenuItemStyle()
 	_ = th.SelectedMenuItemStyle()
 	_ = th.StatusBarStyle()
 	_ = th.ErrorStyle()
+	// UX-polish styles
+	_ = th.SpinnerStyle()
+	_ = th.FooterStyle()
+	_ = th.ModalStyle()
+	_ = th.DetailStyle()
+	_ = th.TableHeaderStyle()
 }
 
 func TestAdaptiveThemeSmoke(t *testing.T) {
@@ -77,4 +83,43 @@ func TestHackerThemeSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	smokeTheme(t, th)
+}
+
+// TestNewStyleMethods verifies that the five new UX-polish style methods
+// render non-empty strings for a representative input on both themes.
+func TestNewStyleMethods(t *testing.T) {
+	sample := "hello"
+	themeNames := []string{"adaptive", "hacker"}
+
+	for _, name := range themeNames {
+		th, err := theme.NewTheme(name)
+		if err != nil {
+			t.Fatalf("NewTheme(%q): %v", name, err)
+		}
+		t.Run(name+"/SpinnerStyle", func(t *testing.T) {
+			if got := th.SpinnerStyle().Render(sample); got == "" {
+				t.Error("SpinnerStyle().Render returned empty string")
+			}
+		})
+		t.Run(name+"/FooterStyle", func(t *testing.T) {
+			if got := th.FooterStyle().Render(sample); got == "" {
+				t.Error("FooterStyle().Render returned empty string")
+			}
+		})
+		t.Run(name+"/ModalStyle", func(t *testing.T) {
+			if got := th.ModalStyle().Render(sample); got == "" {
+				t.Error("ModalStyle().Render returned empty string")
+			}
+		})
+		t.Run(name+"/DetailStyle", func(t *testing.T) {
+			if got := th.DetailStyle().Render(sample); got == "" {
+				t.Error("DetailStyle().Render returned empty string")
+			}
+		})
+		t.Run(name+"/TableHeaderStyle", func(t *testing.T) {
+			if got := th.TableHeaderStyle().Render(sample); got == "" {
+				t.Error("TableHeaderStyle().Render returned empty string")
+			}
+		})
+	}
 }

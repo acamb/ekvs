@@ -21,6 +21,13 @@ type Theme interface {
 	SelectedMenuItemStyle() lipgloss.Style
 	StatusBarStyle() lipgloss.Style
 	ErrorStyle() lipgloss.Style
+
+	// UX-polish styles
+	SpinnerStyle() lipgloss.Style     // animated loading indicator frame
+	FooterStyle() lipgloss.Style      // fixed keyboard-hints bar
+	ModalStyle() lipgloss.Style       // blocking error dialog box
+	DetailStyle() lipgloss.Style      // profile detail panel label/value text
+	TableHeaderStyle() lipgloss.Style // secrets table header row and separator
 }
 
 // NewTheme returns the Theme corresponding to the given name.
@@ -90,6 +97,38 @@ func (AdaptiveTheme) ErrorStyle() lipgloss.Style {
 		Foreground(adaptiveError)
 }
 
+func (AdaptiveTheme) SpinnerStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(adaptiveSecondary)
+}
+
+func (AdaptiveTheme) FooterStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(adaptiveStatus).
+		MarginTop(1)
+}
+
+func (AdaptiveTheme) ModalStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(adaptivePrimary).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(adaptiveError).
+		Padding(1, 2)
+}
+
+func (AdaptiveTheme) DetailStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(adaptiveSecondary).
+		PaddingLeft(2)
+}
+
+func (AdaptiveTheme) TableHeaderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(adaptivePrimary)
+}
+
 // ---------------------------------------------------------------------------
 // HackerTheme — green on black, Matrix-inspired
 // ---------------------------------------------------------------------------
@@ -143,5 +182,42 @@ func (HackerTheme) ErrorStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Bold(true).
 		Foreground(hackerRed).
+		Background(hackerBackground)
+}
+
+func (HackerTheme) SpinnerStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(hackerGreen).
+		Background(hackerBackground)
+}
+
+func (HackerTheme) FooterStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(hackerGreenDim).
+		Background(hackerBackground).
+		MarginTop(1)
+}
+
+func (HackerTheme) ModalStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(hackerGreen).
+		Background(hackerBackground).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(hackerRed).
+		Padding(1, 2)
+}
+
+func (HackerTheme) DetailStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(hackerGreenDim).
+		Background(hackerBackground).
+		PaddingLeft(2)
+}
+
+func (HackerTheme) TableHeaderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(hackerGreen).
 		Background(hackerBackground)
 }

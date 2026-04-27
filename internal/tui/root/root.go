@@ -47,6 +47,10 @@ type Model struct {
 	profile tuiconfig.Profile
 	session session.Session
 
+	// Terminal dimensions — updated on every tea.WindowSizeMsg.
+	width  int
+	height int
+
 	// config holds the in-memory ConfigFile; may be nil before wizard completes.
 	config     *tuiconfig.ConfigFile
 	configPath string
@@ -127,6 +131,16 @@ func newClient(m Model) *client.Client {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Always track terminal dimensions so sub-models and the background fill
+	// have accurate size information. After updating the root fields, fall
+	// through to the normal dispatch so the active sub-model also receives
+	// the message (e.g. profiles needs width for its split layout).
+	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = wsm.Width
+		m.height = wsm.Height
+		// Propagate to the active sub-model via the dispatch below.
+	}
+
 	// Handle cross-screen transition messages first.
 	switch msg := msg.(type) {
 	case wizard.DoneMsg:
