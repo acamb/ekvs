@@ -279,7 +279,102 @@ the raw content unchanged.
 
 ---
 
-## Task 14 — Final review, tests and build verification
+## Task 14 — Refactor SSH key discovery into `config` package; fix wizard `stepIdentityFile`
+
+**Description**  
+The profile-creation wizard (`internal/tui/wizard/wizard.go`) currently presents
+a plain text input for the SSH identity-file path at `stepIdentityFile`.  
+The **Profiles** screen already discovers SSH keys from `~/.ssh` and lets the
+user pick one from a scrollable list (pressing `m` switches to a manual text
+input as a fallback).
+
+Rather than duplicating the logic, extract it into the `internal/tui/config`
+package so any screen can share it, then update both `profiles.go` and the
+wizard.
+
+### Step A — Extract `DiscoverSSHKeys` into `internal/tui/config`
+
+Add to `config.go`:
+
+```go
+// DiscoverSSHKeys returns the absolute paths of likely SSH private-key files
+// found in the directory returned by sshDirFn (pass nil to use SSHDir).
+// Public-key files (.pub) and well-known non-key files are excluded.
+// Returns nil when the directory cannot be read.
+func DiscoverSSHKeys(sshDirFn func() (string, error)) []string
+```
+
+- If `sshDirFn` is nil, fall back to `SSHDir`.
+- Skip `.pub` files and the fixed skip-list (`known_hosts`, `known_hosts.old`,
+  `config`, `authorized_keys`).
+- Add table-driven tests in `config_test.go` using `os.MkdirTemp` to create a
+  fake `~/.ssh` directory (no real `~/.ssh` access in tests).
+
+### Step B — Update `profiles.go` to call `config.DiscoverSSHKeys`
+
+Remove the private `discoverSSHKeys` method from `profiles.Model` and replace
+every call site with `tuiconfig.DiscoverSSHKeys(m.sshDirFn)`.  
+The `sshDirFn` field and `WithSSHDirFn` method remain unchanged (they are
+forwarded as the `sshDirFn` argument to the shared function).
+
+### Step C — Add SSH key discovery to the wizard
+
+1. **Extend `wizard.Model`** with the fields needed for the dual-mode identity
+   step (analogous to `profileForm` in `profiles.go`):
+   ```go
+   sshDirFn        func() (string, error) // nil → config.SSHDir; injectable for tests
+   identMode       identityInputMode      // pick | manual
+   discovered      []string
+   discoveryCursor int
+   identityManual  textInput              // replaces the current m.identity field
+   ```
+   Define `identityInputMode` (`identityModePick` / `identityModeManual`) locally
+   in the wizard package.
+
+2. **Populate `discovered` in `NewModel`**: call `tuiconfig.DiscoverSSHKeys(nil)`
+   at construction time; if no keys are found default to `identityModeManual`.
+
+3. **Update `Update` / `stepIdentityFile` handling** to mirror
+   `profiles.updateFormIdentity`:
+   - `up` / `k` and `down` / `j` move `discoveryCursor` in pick mode.
+   - `m` switches from pick to manual mode.
+   - `esc` in manual mode (when `len(discovered) > 0`) returns to pick mode
+     instead of going to the previous step.
+   - `enter` advances to `stepConfirmSave` using `selectedIdentity()`.
+
+4. **Add `selectedIdentity() string`** helper (same logic as
+   `profiles.profileForm.selectedIdentity`).
+
+5. **Update `View` / `stepIdentityFile` rendering** to mirror
+   `profiles.renderForm` at `stepIdentity`:
+   - Pick mode: scrollable list of discovered keys; selected one highlighted with
+     `SelectedMenuItemStyle()`; `"  m — enter a custom path"` shown at the bottom.
+   - Manual mode: plain text input as before.
+   - Footer hint in pick mode: `"↑/↓ select key • m manual path • Enter confirm • Esc back"`.
+   - Footer hint in manual mode: `"Enter confirm • Esc back • Ctrl+C quit"`.
+
+6. **Update `finish()`** to call `m.selectedIdentity()` instead of
+   `m.identity.value`.
+
+7. **Add/update tests** in `wizard_test.go`:
+   - Pick mode: cursor navigation wraps around.
+   - `m` key switches to manual mode; `esc` returns to pick mode when keys exist.
+   - `selectedIdentity()` returns the highlighted key in pick mode and the typed
+     value in manual mode.
+   - When `discovered` is empty the model defaults to manual mode.
+   - Use `sshDirFn` override — no real `~/.ssh` access.
+
+**Files**
+- `internal/tui/config/config.go` — add `DiscoverSSHKeys`
+- `internal/tui/config/config_test.go` — tests for `DiscoverSSHKeys`
+- `internal/tui/profiles/profiles.go` — remove private helper, use shared function
+- `internal/tui/profiles/profiles_test.go` — verify tests still pass
+- `internal/tui/wizard/wizard.go` — add dual-mode identity step
+- `internal/tui/wizard/wizard_test.go` (new or update)
+
+---
+
+## Task 15 — Final review, tests and build verification
 
 **Description**  
 - Run `go build ./...` and `go test ./...` and fix any remaining issues.

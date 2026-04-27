@@ -112,6 +112,31 @@ New methods added to `theme.Theme` and implemented by both `AdaptiveTheme` and
   text in the detail panel. Added to the `Theme` interface and implemented for
   both `AdaptiveTheme` and `HackerTheme`.
 
+### FR-8 Wizard — SSH Key Discovery at `stepIdentityFile`
+- The SSH key discovery logic currently private to `profiles.Model` is extracted
+  into `internal/tui/config` as an exported function `DiscoverSSHKeys`, so that
+  both `profiles` and `wizard` share a single implementation.
+- `config.DiscoverSSHKeys(sshDirFn func() (string, error)) []string`:
+  - If `sshDirFn` is nil, falls back to `config.SSHDir`.
+  - Skips `.pub` files and the fixed ignore-list (`known_hosts`, `known_hosts.old`,
+    `config`, `authorized_keys`).
+  - Returns nil when the directory cannot be read.
+- `profiles.Model.discoverSSHKeys()` is removed; call sites replaced with
+  `tuiconfig.DiscoverSSHKeys(m.sshDirFn)`.
+- The wizard gains the same dual-mode identity step as the Profiles create form:
+  - On entering `stepIdentityFile`, call `tuiconfig.DiscoverSSHKeys(m.sshDirFn)`.
+  - If keys are found, show a scrollable pick list with `SelectedMenuItemStyle()`.
+    An option `"m — enter a custom path"` is always shown at the bottom.
+  - If no keys are found, fall back directly to manual text input.
+  - In pick mode: `↑`/`k` and `↓`/`j` navigate; `Enter` confirms; `m` switches
+    to manual mode.
+  - In manual mode: `Esc` (when keys were discovered) returns to pick mode;
+    otherwise goes to the previous step.
+  - `sshDirFn func() (string, error)` field on `wizard.Model` can be overridden
+    for tests (no real `~/.ssh` access in unit tests).
+- Goal: the wizard UX is consistent with `modeCreate` in the Profiles screen,
+  with zero code duplication.
+
 ### FR-7 Secrets — Tabular Display
 - The secrets list in `modeList` is rendered as a proper table:
   - Header row: `KEY` | `VALUE` with a horizontal separator line beneath.
@@ -150,6 +175,7 @@ New methods added to `theme.Theme` and implemented by both `AdaptiveTheme` and
 | D-5 | `AdaptiveTheme` background fill uses `adaptiveBackground` but `lipgloss.Place` is a no-op when `BackgroundColor` is transparent — acceptable for light/dark adaptive terminals. |
 | D-6 | Root forwards `tea.WindowSizeMsg` to the active sub-model (same dispatch loop as key presses). Profiles `Model` gains a `width int` field; root re-creates or updates the model on resize. |
 | D-7 | Secrets tabular display is implemented with plain `lipgloss` string formatting (no external table library). The `│` separator is a single Unicode character; no box-drawing borders are used. |
+| D-8 | SSH key discovery is extracted into `config.DiscoverSSHKeys(sshDirFn)` (package `internal/tui/config`) and shared by both `profiles` and `wizard`. The `sshDirFn` parameter (nil → `SSHDir`) enables test injection without touching real `~/.ssh`. |
 
 ---
 
@@ -162,19 +188,23 @@ internal/tui/footer/footer.go
 internal/tui/footer/footer_test.go
 internal/tui/modal/modal.go
 internal/tui/modal/modal_test.go
+internal/tui/wizard/wizard_test.go
 ```
 
 ## Files To Modify
 
 ```
+internal/tui/config/config.go        — add DiscoverSSHKeys
+internal/tui/config/config_test.go   — tests for DiscoverSSHKeys
 internal/tui/theme/theme.go          — add SpinnerStyle, FooterStyle, ModalStyle
 internal/tui/theme/theme_test.go     — test new methods
 internal/tui/root/root.go            — track WindowSizeMsg, wrap View, fix auth error
 internal/tui/projects/projects.go    — use spinner, footer, modal
 internal/tui/secrets/secrets.go      — use spinner, footer, modal
-internal/tui/profiles/profiles.go    — use footer, modal
+internal/tui/profiles/profiles.go    — remove discoverSSHKeys, use config.DiscoverSSHKeys; use footer, modal
+internal/tui/profiles/profiles_test.go — verify no regression
 internal/tui/auth/auth.go            — use modal instead of stateError
-internal/tui/wizard/wizard.go        — use footer
+internal/tui/wizard/wizard.go        — add dual-mode identity step using config.DiscoverSSHKeys
 internal/tui/root/menu.go            — use footer
 internal/tui/root/profileselect.go   — use footer
 ```
