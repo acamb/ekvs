@@ -5,12 +5,15 @@ package root
 
 import (
 	"crypto"
+	"fmt"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 
 	"ekvs/internal/tui/auth"
 	"ekvs/internal/tui/client"
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/profiles"
 	"ekvs/internal/tui/projects"
 	"ekvs/internal/tui/secrets"
@@ -63,6 +66,10 @@ type Model struct {
 	secretsModel  secrets.Model
 	profilesModel profiles.Model
 	pendingScreen screen
+
+	// Error modal overlay (shown on top of screenMain when auth key-derivation fails).
+	showModal  bool
+	modalModel modal.Model
 }
 
 // New creates the root model.
@@ -131,14 +138,22 @@ func newClient(m Model) *client.Client {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Always track terminal dimensions so sub-models and the background fill
-	// have accurate size information. After updating the root fields, fall
-	// through to the normal dispatch so the active sub-model also receives
-	// the message (e.g. profiles needs width for its split layout).
+	// Always track terminal dimensions.
 	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = wsm.Width
 		m.height = wsm.Height
 		// Propagate to the active sub-model via the dispatch below.
+	}
+
+	// When the error modal is active, route all input to it.
+	if m.showModal {
+		if _, ok := msg.(modal.DismissMsg); ok {
+			m.showModal = false
+			return m, nil
+		}
+		updated, cmd := m.modalModel.Update(msg)
+		m.modalModel = updated
+		return m, cmd
 	}
 
 	// Handle cross-screen transition messages first.
@@ -175,8 +190,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			pub = msg.PublicKey.(gossh.PublicKey)
 		}
 		if err := m.session.SetAuthenticated(signer, pub, msg.Fingerprint); err != nil {
-			// Key derivation failed (unsupported key type). Return to main menu.
+			// Key derivation failed (unsupported key type). Show error modal over main menu.
 			m.screen = screenMain
+			m.modalModel = modal.New(m.theme, fmt.Sprintf("authentication error: %v", err))
+			m.showModal = true
 			return m, nil
 		}
 		m.screen = m.pendingScreen
@@ -333,21 +350,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (m Model) View() tea.View {
+	var content string
 	switch m.screen {
 	case screenWizard:
-		return m.wizard.View()
+		content = m.wizard.View().Content
 	case screenProfileSelect:
-		return m.profileSelect.View()
+		content = m.profileSelect.View().Content
 	case screenMain:
-		return m.main.View()
+		content = m.main.View().Content
 	case screenAuth:
-		return m.authModel.View()
+		content = m.authModel.View().Content
 	case screenProjects:
-		return m.projectsModel.View()
+		content = m.projectsModel.View().Content
 	case screenSecrets:
-		return m.secretsModel.View()
+		content = m.secretsModel.View().Content
 	case screenProfiles:
-		return m.profilesModel.View()
+		content = m.profilesModel.View().Content
 	}
-	return tea.NewView("")
+
+	if m.showModal {
+		content += "\n" + m.modalModel.View(m.width)
+	}
+
+	// Guard against pre-first-WindowSizeMsg: do not apply background fill
+	// before we know the terminal dimensions (would produce a 0×0 box).
+	if m.width == 0 || m.height == 0 {
+		return tea.NewView(content)
+	}
+
+	filled := lipgloss.NewStyle().
+		Background(m.theme.BackgroundColor()).
+		Width(m.width).
+		Height(m.height).
+		Render(content)
+
+	return tea.NewView(filled)
 }

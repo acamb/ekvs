@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	internalssh "ekvs/internal/ssh"
+	"ekvs/internal/tui/footer"
 	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/theme"
 )
@@ -35,6 +36,7 @@ type Model struct {
 	theme      theme.Theme
 	showModal  bool
 	modalModel modal.Model
+	footer     footer.Model
 }
 
 // New creates a new auth Model that will try to load the SSH key at identityFile.
@@ -43,6 +45,7 @@ func New(identityFile string, t theme.Theme) Model {
 	return Model{
 		pemBytes: loadPEM(identityFile),
 		theme:    t,
+		footer:   footer.New(t),
 	}
 }
 
@@ -160,7 +163,7 @@ func (m Model) View() tea.View {
 	if m.showModal {
 		sb.WriteString(m.modalModel.View(0))
 	} else {
-		sb.WriteString(m.theme.StatusBarStyle().Render("Enter confirm • Esc cancel"))
+		sb.WriteString(m.footer.View("Enter confirm • Esc cancel"))
 	}
 
 	return tea.NewView(sb.String())

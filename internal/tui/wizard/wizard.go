@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"ekvs/internal/tui/config"
+	"ekvs/internal/tui/footer"
 	"ekvs/internal/tui/theme"
 )
 
@@ -80,6 +81,7 @@ type Model struct {
 	pendingProfile config.Profile // set by finish(), used by saveResultMsg handler
 	err            string
 	theme          theme.Theme
+	footer         footer.Model
 }
 
 // NewModel creates a new wizard Model with the given theme.
@@ -92,6 +94,7 @@ func NewModel(t theme.Theme) Model {
 		identity: newTextInput("", def.IdentityFile),
 		filename: newTextInput("", "ekvs-tui.yaml"),
 		theme:    t,
+		footer:   footer.New(t),
 	}
 }
 
@@ -276,6 +279,6 @@ func (m Model) View() tea.View {
 	}
 
 	sb.WriteString("\n\n")
-	sb.WriteString(t.StatusBarStyle().Render("Enter confirm • Ctrl+C cancel"))
+	sb.WriteString(m.footer.View("Enter confirm • Ctrl+C cancel"))
 	return tea.NewView(sb.String())
 }

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/footer"
 	"ekvs/internal/tui/theme"
 )
 
@@ -17,10 +18,11 @@ type profileSelectModel struct {
 	profiles []tuiconfig.Profile
 	cursor   int
 	theme    theme.Theme
+	footer   footer.Model
 }
 
 func newProfileSelectModel(profiles []tuiconfig.Profile, t theme.Theme) profileSelectModel {
-	return profileSelectModel{profiles: profiles, theme: t}
+	return profileSelectModel{profiles: profiles, theme: t, footer: footer.New(t)}
 }
 
 func (m profileSelectModel) Init() tea.Cmd { return nil }
@@ -68,6 +70,6 @@ func (m profileSelectModel) View() tea.View {
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
-	sb.WriteString(t.StatusBarStyle().Render("↑/↓ navigate • Enter select • q quit"))
+	sb.WriteString(m.footer.View("↑/↓ navigate • Enter select • q quit"))
 	return tea.NewView(sb.String())
 }

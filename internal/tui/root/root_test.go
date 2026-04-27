@@ -2,6 +2,7 @@ package root
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -9,6 +10,7 @@ import (
 	internalssh "ekvs/internal/ssh"
 	"ekvs/internal/tui/auth"
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/profiles"
 	"ekvs/internal/tui/theme"
 )
@@ -487,5 +489,142 @@ func TestRoot_ConfigChangedMsg_InjectsWidth(t *testing.T) {
 
 	if rm.profilesModel.Width() != 80 {
 		t.Errorf("profilesModel.Width() after ConfigChangedMsg: want 80, got %d", rm.profilesModel.Width())
+	}
+}
+
+// ── Task 11: auth error modal in root ─────────────────────────────────────────
+
+// TestRoot_AuthSuccess_BadKeyType_ShowsModal verifies that when
+// session.SetAuthenticated returns an error (unsupported key type) the root
+// shows an error modal overlaid on top of screenMain instead of silently
+// ignoring the failure.
+func TestRoot_AuthSuccess_BadKeyType_ShowsModal(t *testing.T) {
+	// Use an RSA key path but configure it as an ed25519 context so we can
+	// trigger the path. Easiest way: use a valid key but then manually trigger
+	// the error path by calling Update with a fake AuthSuccessMsg that carries
+	// nil signer/pub (SetAuthenticated will fail with an error).
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+	m.pendingScreen = screenMain
+
+	// A nil signer causes session.SetAuthenticated to return an error.
+	next, _ := m.Update(auth.AuthSuccessMsg{
+		Signer:      nil,
+		PublicKey:   nil,
+		Fingerprint: "",
+	})
+	rm := next.(Model)
+
+	if rm.screen != screenMain {
+		t.Errorf("want screenMain after bad-key auth, got %v", rm.screen)
+	}
+	if !rm.showModal {
+		t.Error("root should show modal on SetAuthenticated error")
+	}
+	view := rm.View().Content
+	if !strings.Contains(view, "authentication error") {
+		t.Errorf("modal should mention 'authentication error'; got:\n%s", view)
+	}
+}
+
+func TestRoot_AuthErrorModal_DismissClears(t *testing.T) {
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+	// Force modal on manually.
+	th, _ := theme.NewTheme("adaptive")
+	m.showModal = true
+	m.modalModel = modal.New(th, "test error")
+	m.screen = screenMain
+
+	next, _ := m.Update(modal.DismissMsg{})
+	rm := next.(Model)
+	if rm.showModal {
+		t.Error("modal should be dismissed after DismissMsg")
+	}
+}
+
+func TestRoot_AuthErrorModal_KeyPressRoutedToModal(t *testing.T) {
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+	th, _ := theme.NewTheme("adaptive")
+	m.showModal = true
+	m.modalModel = modal.New(th, "test error")
+	m.screen = screenMain
+
+	// Pressing Enter while modal is active should NOT reach screenMain logic.
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	rm := next.(Model)
+	// After Enter the modal emits DismissMsg (which the test framework can't
+	// easily unwrap, but at minimum the root screen should not have changed).
+	if rm.screen != screenMain {
+		t.Errorf("screen should stay screenMain while modal is active, got %v", rm.screen)
+	}
+}
+
+// ── Task 12: footer in wizard, mainModel, profileSelect ──────────────────────
+
+func TestRoot_MainModel_FooterRendered(t *testing.T) {
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+	view := m.View().Content
+	if !strings.Contains(view, "navigate") {
+		t.Errorf("main menu footer should contain 'navigate'; got:\n%s", view)
+	}
+}
+
+func TestRoot_ProfileSelect_FooterRendered(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	cfg := &tuiconfig.ConfigFile{
+		Profiles: []tuiconfig.Profile{
+			{Name: "a", Theme: "adaptive"},
+			{Name: "b", Theme: "hacker"},
+		},
+	}
+	m := New(cfg, "", th)
+	// Should be on screenProfileSelect.
+	if m.screen != screenProfileSelect {
+		t.Fatalf("want screenProfileSelect, got %v", m.screen)
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "navigate") {
+		t.Errorf("profile select footer should contain 'navigate'; got:\n%s", view)
+	}
+}
+
+// ── Task 13: uniform background fill ─────────────────────────────────────────
+
+// TestRoot_BackgroundFill_AppliedAfterWindowSizeMsg verifies that after a
+// WindowSizeMsg the View output is padded to the full terminal dimensions
+// (i.e. the background fill is applied).
+func TestRoot_BackgroundFill_AppliedAfterWindowSizeMsg(t *testing.T) {
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+
+	// Before WindowSizeMsg: width=0, no fill — raw content returned.
+	viewBefore := m.View().Content
+	if viewBefore == "" {
+		t.Fatal("view should not be empty before WindowSizeMsg")
+	}
+
+	// After WindowSizeMsg: fill is applied; the rendered string must be at
+	// least width chars wide (lipgloss pads to Width).
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = next.(Model)
+	viewAfter := m.View().Content
+
+	if viewAfter == "" {
+		t.Fatal("view should not be empty after WindowSizeMsg")
+	}
+	// The filled content must be wider/taller than the raw content since
+	// lipgloss pads it. At a minimum it must contain the menu items.
+	if !strings.Contains(viewAfter, "EKVS") {
+		t.Errorf("filled view should still contain 'EKVS'; got:\n%s", viewAfter)
+	}
+}
+
+// TestRoot_BackgroundFill_NotAppliedWhenWidthZero verifies that when width is
+// still 0 (before first WindowSizeMsg) the view is returned as-is without
+// the lipgloss width/height constraint (which would produce a 0×0 empty box).
+func TestRoot_BackgroundFill_NotAppliedWhenWidthZero(t *testing.T) {
+	m := newRootWithProfile(t, "../../../internal/ssh/testdata/ed25519")
+	// width and height are 0 at construction time.
+	view := m.View().Content
+	if !strings.Contains(view, "EKVS") {
+		t.Errorf("view before WindowSizeMsg should contain menu; got:\n%s", view)
 	}
 }

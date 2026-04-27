@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"ekvs/internal/tui/footer"
 	"ekvs/internal/tui/theme"
 )
 
@@ -28,10 +29,11 @@ type mainModel struct {
 	items  []menuItem
 	cursor int
 	theme  theme.Theme
+	footer footer.Model
 }
 
 func newMainModel(t theme.Theme) mainModel {
-	return mainModel{items: defaultMenuItems(), theme: t}
+	return mainModel{items: defaultMenuItems(), theme: t, footer: footer.New(t)}
 }
 
 func (m mainModel) Init() tea.Cmd { return nil }
@@ -82,6 +84,6 @@ func (m mainModel) View() tea.View {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString(m.theme.StatusBarStyle().Render("↑/↓ navigate • Enter select • q quit"))
+	sb.WriteString(m.footer.View("↑/↓ navigate • Enter select • q quit"))
 	return tea.NewView(sb.String())
 }
