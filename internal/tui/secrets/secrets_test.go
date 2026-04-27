@@ -657,3 +657,193 @@ func TestSecretsModel_TableRowsAligned(t *testing.T) {
 		t.Errorf("view should contain decrypted value 'val2', got:\n%s", view)
 	}
 }
+
+// ── Task 8: modeSearch ────────────────────────────────────────────────────────
+
+// buildSearchModel creates a model pre-loaded with three secrets with non-overlapping prefixes.
+func buildSearchModel(t *testing.T) Model {
+	t.Helper()
+	sess := testSession(t)
+	b1 := encryptBlob(t, sess, "v1")
+	b2 := encryptBlob(t, sess, "v2")
+	b3 := encryptBlob(t, sess, "v3")
+	th, _ := theme.NewTheme("adaptive")
+	fc := &fakeClient{}
+	m := newWithClient("proj", fc, sess, th)
+	return applyFetched(m, []client.SecretEntry{
+		{Key: "apple", Value: b1},
+		{Key: "banana", Value: b2},
+		{Key: "cherry", Value: b3},
+	})
+}
+
+func TestSecretsModel_SlashEntersModeSearch(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	if m.mode != modeSearch {
+		t.Errorf("want modeSearch after '/', got %v", m.mode)
+	}
+	if m.searchQuery != "" {
+		t.Errorf("searchQuery should be empty on entry, got %q", m.searchQuery)
+	}
+}
+
+func TestSecretsModel_SearchFiltersRows(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+	m, _ = sendKey(m, "n")
+
+	filtered := m.filteredSecrets()
+	if len(filtered) != 1 {
+		t.Fatalf("want 1 filtered secret for query 'ban', got %d", len(filtered))
+	}
+	if filtered[0].Key != "banana" {
+		t.Errorf("want 'banana', got %q", filtered[0].Key)
+	}
+}
+
+func TestSecretsModel_SearchCaseInsensitive(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "A")
+	m, _ = sendKey(m, "P")
+
+	filtered := m.filteredSecrets()
+	// only "apple" contains "ap"
+	if len(filtered) != 1 {
+		t.Fatalf("want 1 result for 'AP' (case-insensitive), got %d", len(filtered))
+	}
+	if filtered[0].Key != "apple" {
+		t.Errorf("want 'apple', got %q", filtered[0].Key)
+	}
+}
+
+func TestSecretsModel_SearchCursorResetOnKeystroke(t *testing.T) {
+	m := buildSearchModel(t)
+	// Move cursor to position 2 first.
+	m, _ = sendKey(m, "down")
+	m, _ = sendKey(m, "down")
+	if m.cursor != 2 {
+		t.Fatalf("setup: want cursor=2, got %d", m.cursor)
+	}
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "a")
+	if m.cursor != 0 {
+		t.Errorf("cursor should reset to 0 on filter change, got %d", m.cursor)
+	}
+}
+
+func TestSecretsModel_SearchBackspace(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+	m, _ = sendKey(m, "backspace")
+
+	if m.searchQuery != "b" {
+		t.Errorf("want searchQuery='b' after backspace, got %q", m.searchQuery)
+	}
+}
+
+func TestSecretsModel_SearchEnterReturnToListKeepsFilter(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+	m, _ = sendKey(m, "n")
+	m, _ = sendKey(m, "enter")
+
+	if m.mode != modeList {
+		t.Errorf("want modeList after Enter, got %v", m.mode)
+	}
+	if m.searchQuery != "ban" {
+		t.Errorf("filter should be kept after Enter, got %q", m.searchQuery)
+	}
+	filtered := m.filteredSecrets()
+	if len(filtered) != 1 {
+		t.Errorf("filter should still be active, got %d results", len(filtered))
+	}
+}
+
+func TestSecretsModel_SearchEscReturnToListKeepsFilter(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+	m, _ = sendKey(m, "n")
+	m, _ = sendKey(m, "esc")
+
+	if m.mode != modeList {
+		t.Errorf("want modeList after Esc, got %v", m.mode)
+	}
+	if m.searchQuery != "ban" {
+		t.Errorf("filter should be kept after Esc from search, got %q", m.searchQuery)
+	}
+}
+
+func TestSecretsModel_DoubleEscClearsFilter(t *testing.T) {
+	m := buildSearchModel(t)
+	// Enter search, type "ban", confirm with Esc → back to modeList with filter active.
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+	m, _ = sendKey(m, "n")
+	m, _ = sendKey(m, "esc")
+	if m.searchQuery == "" {
+		t.Fatalf("filter should be active before double-esc")
+	}
+	// Second Esc in modeList with non-empty filter → clears filter.
+	m, _ = sendKey(m, "esc")
+	if m.searchQuery != "" {
+		t.Errorf("searchQuery should be cleared after second Esc, got %q", m.searchQuery)
+	}
+	if len(m.filteredSecrets()) != 3 {
+		t.Errorf("all secrets should be visible after clear, got %d", len(m.filteredSecrets()))
+	}
+}
+
+func TestSecretsModel_SearchViewShowsFilteredResults(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+	m, _ = sendKey(m, "n")
+	m, _ = sendKey(m, "enter")
+
+	view := m.View().Content
+	if !strings.Contains(view, "banana") {
+		t.Errorf("view should contain 'banana', got:\n%s", view)
+	}
+	// Only "banana" matches "ban".
+	if len(m.pageSecrets()) != 1 {
+		t.Errorf("only 1 row should be shown, got %d", len(m.pageSecrets()))
+	}
+}
+
+func TestSecretsModel_SearchNoMatchShowsEmptyMessage(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "z")
+	m, _ = sendKey(m, "z")
+	m, _ = sendKey(m, "z")
+	m, _ = sendKey(m, "enter")
+
+	view := m.View().Content
+	if !strings.Contains(view, "zz") {
+		t.Errorf("view should mention the query in empty message, got:\n%s", view)
+	}
+}
+
+func TestSecretsModel_SearchFooterHint(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/")
+	m, _ = sendKey(m, "b")
+	m, _ = sendKey(m, "a")
+
+	view := m.View().Content
+	if !strings.Contains(view, "Search:") {
+		t.Errorf("footer should show 'Search:' hint in modeSearch, got:\n%s", view)
+	}
+}

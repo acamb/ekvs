@@ -27,6 +27,7 @@ const (
 	modeEdit        // value field only (key is read-only)
 	modeDelete      // inline y/n confirmation
 	modeError       // blocking error modal overlay
+	modeSearch      // incremental key filter
 )
 
 // apiClient is the subset of client.Client used by this model.
@@ -52,6 +53,7 @@ type Model struct {
 	activeField int // 0 = key field, 1 = value field (in modeAdd/modeEdit)
 	err         error
 	loading     bool
+	searchQuery string
 
 	table      table.Model
 	spinner    spinner.Model
@@ -174,23 +176,39 @@ func (m Model) deleteSecretCmd(key string) tea.Cmd {
 
 // ── pagination helpers ────────────────────────────────────────────────────────
 
+func (m Model) filteredSecrets() []client.SecretEntry {
+	if m.searchQuery == "" {
+		return m.secrets
+	}
+	q := strings.ToLower(m.searchQuery)
+	out := make([]client.SecretEntry, 0, len(m.secrets))
+	for _, e := range m.secrets {
+		if strings.Contains(strings.ToLower(e.Key), q) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func (m Model) totalPages() int {
-	if len(m.secrets) == 0 {
+	n := len(m.filteredSecrets())
+	if n == 0 {
 		return 1
 	}
-	return (len(m.secrets) + pageSize - 1) / pageSize
+	return (n + pageSize - 1) / pageSize
 }
 
 func (m Model) pageSecrets() []client.SecretEntry {
+	all := m.filteredSecrets()
 	start := m.page * pageSize
-	if start >= len(m.secrets) {
+	if start >= len(all) {
 		return nil
 	}
 	end := start + pageSize
-	if end > len(m.secrets) {
-		end = len(m.secrets)
+	if end > len(all) {
+		end = len(all)
 	}
-	return m.secrets[start:end]
+	return all[start:end]
 }
 
 func (m Model) selectedEntry() (client.SecretEntry, bool) {
@@ -272,6 +290,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateEdit(msg)
 		case modeDelete:
 			return m.updateDelete(msg)
+		case modeSearch:
+			return m.updateSearch(msg)
 		}
 	}
 	return m, nil
@@ -307,6 +327,11 @@ func (m Model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.inputKey = ""
 		m.inputValue = ""
 		m.activeField = 0
+	case "/":
+		m.mode = modeSearch
+		m.searchQuery = ""
+		m.cursor = 0
+		m.table = m.buildTable()
 	case "e":
 		if entry, ok := m.selectedEntry(); ok {
 			decrypted, err := m.sess.Decrypt(entry.Value)
@@ -337,6 +362,13 @@ func (m Model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			clipboard.Write(clipboard.FmtText, []byte(decrypted))
 		}
 	case "esc", "q":
+		if m.searchQuery != "" {
+			m.searchQuery = ""
+			m.cursor = 0
+			m.page = 0
+			m.table = m.buildTable()
+			return m, nil
+		}
 		return m, func() tea.Msg { return BackMsg{} }
 	}
 	return m, nil
@@ -444,6 +476,29 @@ func (m Model) updateDelete(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateSearch(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "esc":
+		m.mode = modeList
+	case "backspace":
+		if len(m.searchQuery) > 0 {
+			r := []rune(m.searchQuery)
+			m.searchQuery = string(r[:len(r)-1])
+			m.cursor = 0
+			m.page = 0
+			m.table = m.buildTable()
+		}
+	default:
+		if text := msg.Key().Text; text != "" {
+			m.searchQuery += text
+			m.cursor = 0
+			m.page = 0
+			m.table = m.buildTable()
+		}
+	}
+	return m, nil
+}
+
 // decryptedValue attempts to decrypt entry.Value using the session.
 // Returns the decrypted string or "<error>" on failure.
 func (m Model) decryptedValue(entry client.SecretEntry) string {
@@ -477,9 +532,13 @@ func (m Model) View() tea.View {
 	items := m.pageSecrets()
 
 	switch m.mode {
-	case modeList:
+	case modeList, modeSearch:
 		if len(items) == 0 {
-			sb.WriteString(m.theme.MenuItemStyle().Render("  (no secrets)"))
+			if m.searchQuery != "" {
+				sb.WriteString(m.theme.MenuItemStyle().Render(fmt.Sprintf("  (no secrets match %q)", m.searchQuery)))
+			} else {
+				sb.WriteString(m.theme.MenuItemStyle().Render("  (no secrets)"))
+			}
 			sb.WriteString("\n")
 		} else {
 			sb.WriteString(m.table.View())
@@ -523,7 +582,13 @@ func (m Model) View() tea.View {
 	var hints string
 	switch m.mode {
 	case modeList:
-		hints = fmt.Sprintf("%s  ↑/↓ navigate • ←/→ page • n add • e edit • d delete • c copy • Esc back", pageInfo)
+		if m.searchQuery != "" {
+			hints = fmt.Sprintf("%s  filter:%q  ↑/↓ navigate • ←/→ page • n add • e edit • d delete • c copy • / search • Esc clear filter", pageInfo, m.searchQuery)
+		} else {
+			hints = fmt.Sprintf("%s  ↑/↓ navigate • ←/→ page • n add • e edit • d delete • c copy • / search • Esc back", pageInfo)
+		}
+	case modeSearch:
+		hints = fmt.Sprintf("Search: %s█  Enter/Esc confirm • Esc clear", m.searchQuery)
 	case modeAdd:
 		if m.activeField == 0 {
 			hints = "Tab/Enter next field • Esc cancel"
