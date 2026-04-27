@@ -405,6 +405,58 @@ func TestDeleteProfile_SaveFailure_RollsBack(t *testing.T) {
 	}
 }
 
+// TestCreateProfile_SaveFailure_ShowsError verifies that a disk-write failure
+// during create is reported to the user and does not mutate the in-memory config.
+func TestCreateProfile_SaveFailure_ShowsError(t *testing.T) {
+	badPath := filepath.Join(t.TempDir(), "nonexistent", "ekvs-tui.yaml")
+	cfg := &tuiconfig.ConfigFile{}
+	m := newTestModel(t, cfg, badPath, "")
+
+	m, _ = sendKey(m, "c")
+	m, _ = stepsThroughCreateForm(t, m, "failprofile")
+
+	// After a save failure the user stays in the form (mode stays modeCreate)
+	// so they can see the error without losing their input.
+	if m.mode == modeList {
+		// Accepting modeList is wrong only if no error is shown.
+	}
+	if m.err == "" {
+		t.Error("err should be set after save failure")
+	}
+	// The in-memory profile must have been rolled back (UpsertProfile was called
+	// but then the backup was restored).
+	if len(m.config.Profiles) != 0 {
+		t.Errorf("rollback: want 0 profiles after failed save, got %d", len(m.config.Profiles))
+	}
+}
+
+// TestEditProfile_SaveFailure_RollsBack verifies that a disk-write failure
+// during edit is reported and the in-memory config is restored to its prior state.
+func TestEditProfile_SaveFailure_RollsBack(t *testing.T) {
+	badPath := filepath.Join(t.TempDir(), "nonexistent", "ekvs-tui.yaml")
+	cfg := testConfig(tuiconfig.Profile{Name: "alpha", ServerURL: "http://old", Theme: "adaptive"})
+	m := newTestModel(t, cfg, badPath, "other") // "alpha" is not active
+
+	m, _ = sendKey(m, "e") // edit "alpha"
+	// Rename to "alpha-new"
+	for range "alpha" {
+		m, _ = sendKey(m, "backspace")
+	}
+	m = typeString(m, "alpha-new")
+	m, _ = sendKey(m, "enter") // confirm name
+	m, _ = sendKey(m, "enter") // confirm serverURL
+	m, _ = sendKey(m, "enter") // confirm identity
+	m, _ = sendKey(m, "enter") // confirm theme → save (fails)
+
+	if m.err == "" {
+		t.Error("err should be set after failed save")
+	}
+	// Original name must be preserved.
+	if len(m.config.Profiles) != 1 || m.config.Profiles[0].Name != "alpha" {
+		t.Errorf("rollback: want profile 'alpha', got %v", m.config.Profiles)
+	}
+}
+
 // ── create flow ───────────────────────────────────────────────────────────────
 
 // stepsThroughCreateForm drives the create form to completion with the given

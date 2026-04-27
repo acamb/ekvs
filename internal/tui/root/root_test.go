@@ -344,3 +344,48 @@ func TestRoot_ProfilesBack_ReturnsToMain(t *testing.T) {
 		t.Errorf("expected screenMain after profiles.BackMsg, got %v", rm.screen)
 	}
 }
+
+// TestRoot_MultipleProfiles_ShowsProfileSelection verifies that starting the
+// application with more than one configured profile shows the profile-selection
+// screen, simulating a restart with an existing multi-profile config file.
+func TestRoot_MultipleProfiles_ShowsProfileSelection(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	cfg := &tuiconfig.ConfigFile{
+		Profiles: []tuiconfig.Profile{
+			{Name: "local", ServerURL: "http://localhost:8080", Theme: "adaptive"},
+			{Name: "prod", ServerURL: "https://prod.example.com", Theme: "hacker"},
+		},
+	}
+	m := New(cfg, "", th)
+
+	if m.screen != screenProfileSelect {
+		t.Errorf("expected screenProfileSelect on startup with multiple profiles, got %v", m.screen)
+	}
+}
+
+// TestRoot_SingleProfile_SkipsProfileSelection verifies that starting with a
+// single profile skips the selection screen and goes directly to the main menu.
+func TestRoot_SingleProfile_SkipsProfileSelection(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	cfg := &tuiconfig.ConfigFile{
+		Profiles: []tuiconfig.Profile{
+			{Name: "only", ServerURL: "http://localhost:8080", Theme: "adaptive"},
+		},
+	}
+	m := New(cfg, "", th)
+
+	if m.screen != screenMain {
+		t.Errorf("expected screenMain on startup with single profile, got %v", m.screen)
+	}
+}
+
+// TestRoot_NoProfiles_ShowsWizard verifies that starting with no profiles
+// (nil config) shows the first-run wizard.
+func TestRoot_NoProfiles_ShowsWizard(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	m := New(nil, "", th)
+
+	if m.screen != screenWizard {
+		t.Errorf("expected screenWizard on startup with no config, got %v", m.screen)
+	}
+}
