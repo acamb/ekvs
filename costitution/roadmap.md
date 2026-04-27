@@ -65,9 +65,6 @@
 16. **tui_ux_polish**
     Loading indicators, error modals, keyboard shortcut help, and overall UX refinement.
 
-17. **tui_e2e_tests**
-    End-to-end tests for TUI screens using [`teatest`](https://github.com/charmbracelet/x/tree/main/exp/teatest) (the official Bubble Tea v2 test harness). Each TUI screen (`projects`, `secrets`, `profiles`, `auth`, `wizard`, `mainModel`) gets a `*_e2e_test.go` file that drives the model via simulated key presses and asserts on the rendered output. Covers happy paths and error paths (e.g. spinner appears on load, modal appears on error, footer hints match the current mode). The `teatest` package is added to `go.mod` as a test-only dependency.
-
 ---
 
 ### Phase 3 — CLI Client
@@ -100,17 +97,20 @@
 25. **integration_test_server_tui**
     Docker-based semi-manual integration scenarios covering server ↔ TUI communication: same flows as CLI scenarios but driven through the TUI interface.
 
+26. **tui_e2e_tests**
+    End-to-end tests for TUI screens using [`teatest`](https://github.com/charmbracelet/x/tree/main/exp/teatest) (the official Bubble Tea v2 test harness). Each TUI screen (`projects`, `secrets`, `profiles`, `auth`, `wizard`, `mainModel`) gets a `*_e2e_test.go` file that drives the model via simulated key presses and asserts on the rendered output. Covers happy paths and error paths (e.g. spinner appears on load, modal appears on error, footer hints match the current mode). The `teatest` package is added to `go.mod` as a test-only dependency.
+
 ---
 
 ### Phase 5 — CI Pipeline
 
-26. **ci_pipeline**
+7**ci_pipeline**
     GitHub Actions workflow that runs on every push/PR to `main`: checkout, setup-go, `make test`, `make lint`. Integration tests are explicitly excluded from CI and remain manual only.
 
 ---
 
 ### Phase 6 — SSH Agent Support
 
-27. **ssh_agent_support**
+8**ssh_agent_support**
     Add opt-in support for signing via the SSH agent (`SSH_AUTH_SOCK`). When the agent is available and the configured `identity_file` public key is present in the agent, both TUI and CLI clients will delegate signing to the agent instead of loading the private key from disk, so no passphrase prompt is needed. Falls back to the current file-based flow if the agent is unavailable or does not hold the required key. The `internal/ssh` package is extended with an `AgentSigner` helper; TUI and CLI auth flows are updated to probe the agent first.
 
