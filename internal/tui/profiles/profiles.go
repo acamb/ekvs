@@ -7,8 +7,11 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/footer"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/theme"
 )
 
@@ -23,6 +26,7 @@ const (
 	modeEdit               // multi-step form for an existing profile
 	modeDeleteConfirm      // inline y/N prompt before deleting
 	modeReloadPrompt       // y/N prompt after saving changes to the active profile
+	modeError              // blocking error modal overlay
 )
 
 // formStep is the step within the create/edit form.
@@ -156,6 +160,7 @@ type Model struct {
 
 	cursor int
 	mode   mode
+	width  int
 
 	form         profileForm
 	deleteTarget string
@@ -164,6 +169,9 @@ type Model struct {
 	pendingReload tuiconfig.Profile
 
 	err string
+
+	footer     footer.Model
+	modalModel modal.Model
 
 	// sshDirFn is the function used to locate the SSH directory.
 	// Defaults to tuiconfig.SSHDir; overridable via WithSSHDirFn for tests.
@@ -185,6 +193,7 @@ func New(cfg *tuiconfig.ConfigFile, configPath string, activeProfileName string,
 		config:        cfg,
 		configPath:    configPath,
 		activeProfile: activeProfileName,
+		footer:        footer.New(t),
 	}
 }
 
@@ -193,6 +202,11 @@ func New(cfg *tuiconfig.ConfigFile, configPath string, activeProfileName string,
 func (m Model) WithSSHDirFn(fn func() (string, error)) Model {
 	m.sshDirFn = fn
 	return m
+}
+
+// Width returns the current terminal width known to the model.
+func (m Model) Width() int {
+	return m.width
 }
 
 // ── Init / UpdateTyped / Update ───────────────────────────────────────────────
@@ -212,6 +226,24 @@ func (m Model) UpdateTyped(msg tea.Msg) (Model, tea.Cmd) {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Track terminal size.
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = ws.Width
+		return m, nil
+	}
+
+	// When the error modal is active, route all input to it.
+	if m.mode == modeError {
+		if _, ok := msg.(modal.DismissMsg); ok {
+			m.mode = modeList
+			m.err = ""
+			return m, nil
+		}
+		updated, cmd := m.modalModel.Update(msg)
+		m.modalModel = updated
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		m.err = "" // clear previous error on any key
@@ -418,12 +450,16 @@ func (m Model) saveForm() (tea.Model, tea.Cmd) {
 	}
 	if mutErr != nil {
 		m.err = mutErr.Error()
+		m.modalModel = modal.New(m.theme, m.err)
+		m.mode = modeError
 		return m, nil
 	}
 
 	if saveErr := tuiconfig.Save(m.configPath, m.config); saveErr != nil {
 		m.config.Profiles = backup // restore in-memory state
 		m.err = fmt.Sprintf("save failed: %v", saveErr)
+		m.modalModel = modal.New(m.theme, m.err)
+		m.mode = modeError
 		return m, nil
 	}
 
@@ -479,14 +515,16 @@ func (m Model) doDelete() (tea.Model, tea.Cmd) {
 
 	if err := m.config.DeleteProfile(target); err != nil {
 		m.err = err.Error()
-		m.mode = modeList
+		m.modalModel = modal.New(m.theme, m.err)
+		m.mode = modeError
 		return m, nil
 	}
 
 	if err := tuiconfig.Save(m.configPath, m.config); err != nil {
 		m.config.Profiles = backup
 		m.err = fmt.Sprintf("save failed: %v", err)
-		m.mode = modeList
+		m.modalModel = modal.New(m.theme, m.err)
+		m.mode = modeError
 		return m, nil
 	}
 
@@ -626,21 +664,27 @@ func (m Model) discoverSSHKeys() []string {
 	return keys
 }
 
-// ── View ─────────────────────────────────────────────────────────────────────
-
 // View implements tea.Model.
 func (m Model) View() tea.View {
 	var sb strings.Builder
 	t := m.theme
 
 	switch m.mode {
+	case modeError:
+		sb.WriteString(t.TitleStyle().Render("Profiles"))
+		sb.WriteString("\n")
+		sb.WriteString(m.modalModel.View(m.width))
+		return tea.NewView(sb.String())
+
 	case modeList:
 		sb.WriteString(t.TitleStyle().Render("Profiles"))
 		sb.WriteString("\n")
+
 		if len(m.config.Profiles) == 0 {
 			sb.WriteString(t.MenuItemStyle().Render("  (no profiles)"))
 			sb.WriteString("\n")
-		} else {
+		} else if m.width == 0 {
+			// Fallback: single-column list (before first WindowSizeMsg).
 			for i, p := range m.config.Profiles {
 				active := ""
 				if p.Name == m.activeProfile {
@@ -655,13 +699,74 @@ func (m Model) View() tea.View {
 				}
 				sb.WriteString("\n")
 			}
+		} else {
+			// Two-pane split layout with vertical separator.
+			const sepW = 3 // " │ "
+			leftW := max(20, m.width*30/100)
+			rightW := m.width - leftW - sepW
+			if rightW < 1 {
+				rightW = 1
+			}
+
+			// Build left pane content.
+			var left strings.Builder
+			for i, p := range m.config.Profiles {
+				active := ""
+				if p.Name == m.activeProfile {
+					active = " *"
+				}
+				name := p.Name + active
+				if i == m.cursor {
+					left.WriteString(t.SelectedMenuItemStyle().Render("> " + name))
+				} else {
+					left.WriteString(t.MenuItemStyle().Render("  " + name))
+				}
+				left.WriteString("\n")
+			}
+
+			// Build separator column: one "│" per line of the left pane.
+			leftLines := strings.Count(left.String(), "\n")
+			sepLines := make([]string, leftLines)
+			for i := range sepLines {
+				sepLines[i] = "│"
+			}
+			sep := lipgloss.NewStyle().
+				Width(sepW).
+				Align(lipgloss.Center).
+				Render(strings.Join(sepLines, "\n"))
+
+			// Build right pane: detail for cursor profile.
+			var rightContent string
+			if m.cursor < len(m.config.Profiles) {
+				p := m.config.Profiles[m.cursor]
+				active := ""
+				if p.Name == m.activeProfile {
+					active = " *"
+				}
+				detail := fmt.Sprintf(
+					"Name          : %s%s\nServer URL    : %s\nIdentity file : %s\nTheme         : %s",
+					p.Name, active, p.ServerURL, p.IdentityFile, p.Theme,
+				)
+				rightContent = t.DetailStyle().
+					Width(rightW).
+					Render(detail)
+			}
+
+			sb.WriteString(lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				lipgloss.NewStyle().Width(leftW).Render(left.String()),
+				sep,
+				rightContent,
+			))
+			sb.WriteString("\n")
 		}
+
 		sb.WriteString("\n")
 		if m.err != "" {
 			sb.WriteString(t.ErrorStyle().Render(m.err))
 			sb.WriteString("\n")
 		}
-		sb.WriteString(t.StatusBarStyle().Render(
+		sb.WriteString(m.footer.View(
 			"↑/↓ navigate • Enter/s switch • c create • e edit • d delete • Esc back • q quit"))
 
 	case modeCreate, modeEdit:
@@ -679,14 +784,14 @@ func (m Model) View() tea.View {
 		sb.WriteString(t.ErrorStyle().Render(
 			fmt.Sprintf("Delete profile %q? [y/N]", m.deleteTarget)))
 		sb.WriteString("\n\n")
-		sb.WriteString(t.StatusBarStyle().Render("y confirm • n/Esc cancel"))
+		sb.WriteString(m.footer.View("y confirm • n/Esc cancel"))
 
 	case modeReloadPrompt:
 		sb.WriteString(t.TitleStyle().Render("Profile Updated"))
 		sb.WriteString("\n\n")
 		sb.WriteString(t.MenuItemStyle().Render("Changes saved. Reload profile now? [y/N]"))
 		sb.WriteString("\n\n")
-		sb.WriteString(t.StatusBarStyle().Render("y reload • n/Esc keep current session"))
+		sb.WriteString(m.footer.View("y reload • n/Esc keep current session"))
 	}
 
 	return tea.NewView(sb.String())
@@ -760,14 +865,14 @@ func (m Model) renderForm(sb *strings.Builder) {
 	sb.WriteString("\n")
 	switch f.step {
 	case stepName, stepServerURL:
-		sb.WriteString(t.StatusBarStyle().Render("Enter confirm • Esc back • Ctrl+C quit"))
+		sb.WriteString(m.footer.View("Enter confirm • Esc back • Ctrl+C quit"))
 	case stepIdentity:
 		if f.identMode == identityModePick {
-			sb.WriteString(t.StatusBarStyle().Render("↑/↓ select key • m manual path • Enter confirm • Esc back"))
+			sb.WriteString(m.footer.View("↑/↓ select key • m manual path • Enter confirm • Esc back"))
 		} else {
-			sb.WriteString(t.StatusBarStyle().Render("Enter confirm • Esc back • Ctrl+C quit"))
+			sb.WriteString(m.footer.View("Enter confirm • Esc back • Ctrl+C quit"))
 		}
 	case stepTheme:
-		sb.WriteString(t.StatusBarStyle().Render("↑/↓ select theme • Enter confirm • Esc back"))
+		sb.WriteString(m.footer.View("↑/↓ select theme • Enter confirm • Esc back"))
 	}
 }

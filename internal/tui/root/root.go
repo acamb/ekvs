@@ -230,6 +230,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cfg = &tuiconfig.ConfigFile{}
 		}
 		m.profilesModel = profiles.New(cfg, m.configPath, m.profile.Name, m.theme)
+		if m.width > 0 {
+			m.profilesModel, _ = m.profilesModel.UpdateTyped(
+				tea.WindowSizeMsg{Width: m.width, Height: m.height},
+			)
+		}
 		m.screen = screenProfiles
 		return m, m.profilesModel.Init()
 
@@ -274,6 +279,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Non-active profile changed: stay on profiles screen with updated config
 		m.profilesModel = profiles.New(msg.Config, m.configPath, m.profile.Name, m.theme)
+		if m.width > 0 {
+			m.profilesModel, _ = m.profilesModel.UpdateTyped(
+				tea.WindowSizeMsg{Width: m.width, Height: m.height},
+			)
+		}
 		m.screen = screenProfiles
 		return m, m.profilesModel.Init()
 	}

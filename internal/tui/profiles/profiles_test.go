@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	tuiconfig "ekvs/internal/tui/config"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/theme"
 )
 
@@ -1018,5 +1019,177 @@ func TestDiscoverSSHKeys_ReturnsNilOnError(t *testing.T) {
 	keys := m.discoverSSHKeys()
 	if keys != nil {
 		t.Errorf("expected nil on error, got %v", keys)
+	}
+}
+
+// ── Task 9: WindowSizeMsg, modeError, two-pane split layout ───────────────────
+
+func TestProfiles_WindowSizeMsgUpdatesWidth(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{Name: "p", Theme: "adaptive"})
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "p")
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	mm := next.(Model)
+	if mm.width != 120 {
+		t.Errorf("want width=120, got %d", mm.width)
+	}
+}
+
+func TestProfiles_SplitLayoutRendered(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{
+		Name:         "prod",
+		ServerURL:    "https://ekvs.example.com",
+		IdentityFile: "~/.ssh/id_ed25519",
+		Theme:        "adaptive",
+	})
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "prod")
+
+	// Set a width wide enough to trigger the split layout.
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = next.(Model)
+
+	view := m.View().Content
+	// Left pane: profile name.
+	if !strings.Contains(view, "prod") {
+		t.Errorf("split view should contain profile name 'prod'; got:\n%s", view)
+	}
+	// Vertical separator.
+	if !strings.Contains(view, "│") {
+		t.Errorf("split view should contain vertical separator '│'; got:\n%s", view)
+	}
+	// Right pane: detail fields.
+	if !strings.Contains(view, "Server URL") {
+		t.Errorf("split view should contain 'Server URL' in detail pane; got:\n%s", view)
+	}
+	if !strings.Contains(view, "https://ekvs.example.com") {
+		t.Errorf("split view should contain server URL; got:\n%s", view)
+	}
+	if !strings.Contains(view, "Identity file") {
+		t.Errorf("split view should contain 'Identity file'; got:\n%s", view)
+	}
+}
+
+func TestProfiles_ActiveProfileMarkedInSplitLayout(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{Name: "act", Theme: "adaptive"})
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "act")
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = next.(Model)
+
+	view := m.View().Content
+	// Active profile should be marked with *.
+	if !strings.Contains(view, "act *") {
+		t.Errorf("active profile should be marked with '*'; got:\n%s", view)
+	}
+}
+
+func TestProfiles_FallbackLayoutWhenWidthZero(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{
+		Name:      "prod",
+		ServerURL: "http://x",
+		Theme:     "adaptive",
+	})
+	// No WindowSizeMsg sent → width stays 0.
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "prod")
+
+	view := m.View().Content
+	// Should still render the profile name in single-column mode.
+	if !strings.Contains(view, "prod") {
+		t.Errorf("fallback view should contain 'prod'; got:\n%s", view)
+	}
+}
+
+func TestProfiles_ModeErrorOnSaveFail(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{Name: "p", Theme: "adaptive"})
+	// Use a read-only path to force a save failure.
+	roDir := t.TempDir()
+	roPath := filepath.Join(roDir, "sub", "ekvs-tui.yaml") // non-existent sub-dir → save fails
+
+	m := newTestModel(t, cfg, roPath, "p")
+	sshFn, _ := fakeSSHDir(t)
+	m = m.WithSSHDirFn(sshFn)
+
+	// Enter edit mode and submit.
+	m, _ = sendKey(m, "e")
+	m, _ = sendKey(m, "enter")    // name step
+	m, _ = sendKey(m, "enter")    // server step
+	m, _ = sendKey(m, "enter")    // identity step
+	m, cmd := sendKey(m, "enter") // theme step → triggers saveForm
+
+	// Execute the command if any, then check mode.
+	if cmd != nil {
+		msg := cmd()
+		next, _ := m.Update(msg)
+		m = next.(Model)
+	}
+
+	// After the failed save the model should be in modeError.
+	if m.mode != modeError {
+		t.Errorf("want modeError after save failure, got mode=%v", m.mode)
+	}
+
+	view := m.View().Content
+	if !strings.Contains(view, "save") {
+		t.Errorf("error modal should mention 'save'; got:\n%s", view)
+	}
+}
+
+func TestProfiles_ModeErrorDismissReturnsToList(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{Name: "p", Theme: "adaptive"})
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "p")
+
+	// Force into modeError manually.
+	m.mode = modeError
+	m.err = "something went wrong"
+	m.modalModel = modal.New(m.theme, m.err)
+
+	// DismissMsg should return to modeList.
+	next, _ := m.Update(modal.DismissMsg{})
+	mm := next.(Model)
+	if mm.mode != modeList {
+		t.Errorf("want modeList after DismissMsg, got %v", mm.mode)
+	}
+	if mm.err != "" {
+		t.Errorf("err should be cleared after dismiss, got %q", mm.err)
+	}
+}
+
+func TestProfiles_FooterPresentInListMode(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{Name: "p", Theme: "adaptive"})
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "p")
+
+	view := m.View().Content
+	if !strings.Contains(view, "navigate") {
+		t.Errorf("footer hints should contain 'navigate' in list mode; got:\n%s", view)
+	}
+}
+
+func TestProfiles_FooterPresentInDeleteConfirm(t *testing.T) {
+	cfg := testConfig(tuiconfig.Profile{Name: "p", Theme: "adaptive"})
+	m := newTestModel(t, cfg, makeTempConfigPath(t), "p")
+	m, _ = sendKey(m, "d")
+
+	view := m.View().Content
+	if !strings.Contains(view, "confirm") {
+		t.Errorf("footer should contain 'confirm' in delete mode; got:\n%s", view)
+	}
+}
+
+func TestProfiles_FooterPresentInReloadPrompt(t *testing.T) {
+	path := makeTempConfigPath(t)
+	cfg := testConfig(tuiconfig.Profile{Name: "act", ServerURL: "http://a", Theme: "adaptive"})
+	m := newTestModel(t, cfg, path, "act")
+	sshFn, _ := fakeSSHDir(t)
+	m = m.WithSSHDirFn(sshFn)
+
+	m, _ = sendKey(m, "e")
+	m, _ = sendKey(m, "enter")
+	m, _ = sendKey(m, "enter")
+	m, _ = sendKey(m, "enter")
+	m, _ = sendKey(m, "enter") // → modeReloadPrompt
+
+	view := m.View().Content
+	if !strings.Contains(view, "reload") {
+		t.Errorf("footer should contain 'reload' hint; got:\n%s", view)
 	}
 }

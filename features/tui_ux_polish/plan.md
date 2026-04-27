@@ -175,9 +175,17 @@ the user to filter the displayed rows by key substring.
   failure, etc.); dismiss returns to the previous mode.
 - Add `width int` field to `profiles.Model`; handle `tea.WindowSizeMsg` in
   `Update` (forwarded from root, see Task 2).
-- In `modeList`, rewrite `View()` to render a two-pane split layout:
+  The root model must inject the already-known terminal width immediately after
+  constructing `profiles.Model` (in `triggerProfilesMsg` and `ConfigChangedMsg`
+  handlers) by calling `m.profilesModel.UpdateTyped(tea.WindowSizeMsg{Width: m.width, Height: m.height})`
+  before assigning to `m.profilesModel`. This ensures the split layout is
+  visible on first render without requiring a resize event.
+- In `modeList`, rewrite `View()` to render a two-pane split layout with a
+  vertical separator:
   - Left pane width = `max(20, width * 30 / 100)`.
-  - Right pane width = remaining width.
+  - Separator = 3 chars wide: ` │ ` (space + U+2502 BOX DRAWINGS LIGHT VERTICAL + space),
+    rendered as a column of `│` characters repeated for the height of the tallest pane.
+  - Right pane width = `width - leftW - 3`.
   - Left pane: list of profile names; active profile marked with `*`; cursor
     highlighted with `SelectedMenuItemStyle()`; each entry on its own line.
   - Right pane: detail panel for the highlighted profile rendered with
@@ -188,7 +196,7 @@ the user to filter the displayed rows by key substring.
     Identity file : ~/.ssh/id_ed25519
     Theme         : hacker
     ```
-  - Panes joined with `lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)`.
+  - Panes joined with `lipgloss.JoinHorizontal(lipgloss.Top, leftPane, sep, rightPane)`.
   - When `width == 0` (before first `WindowSizeMsg`), fall back to the old
     single-column list view to avoid layout artefacts.
 - All other modes (`modeCreate`, `modeEdit`, `modeDeleteConfirm`,

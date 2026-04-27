@@ -437,3 +437,55 @@ func TestRoot_WindowSizeMsg_Propagated(t *testing.T) {
 		t.Errorf("screen changed unexpectedly: got %v", rm.screen)
 	}
 }
+
+// TestRoot_TriggerProfilesMsg_InjectsWidth verifies that when the root model
+// transitions to screenProfiles it immediately injects the already-known
+// terminal width into profilesModel, so the split layout is visible on first
+// render without requiring a resize event.
+func TestRoot_TriggerProfilesMsg_InjectsWidth(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	cfg := &tuiconfig.ConfigFile{
+		Profiles: []tuiconfig.Profile{
+			{Name: "a", Theme: "adaptive"},
+		},
+	}
+	m := New(cfg, "", th)
+	// Simulate a WindowSizeMsg that arrived before the user opened profiles.
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = next.(Model)
+
+	// Now trigger the profiles screen.
+	next, _ = m.Update(triggerProfilesMsg{})
+	rm := next.(Model)
+
+	if rm.screen != screenProfiles {
+		t.Fatalf("want screenProfiles, got %v", rm.screen)
+	}
+	// The profiles model must already know the terminal width.
+	if rm.profilesModel.Width() != 120 {
+		t.Errorf("profilesModel.Width(): want 120, got %d", rm.profilesModel.Width())
+	}
+}
+
+// TestRoot_ConfigChangedMsg_InjectsWidth verifies that re-creating profilesModel
+// on ConfigChangedMsg also injects the current root width.
+func TestRoot_ConfigChangedMsg_InjectsWidth(t *testing.T) {
+	th, _ := theme.NewTheme("adaptive")
+	cfg := &tuiconfig.ConfigFile{
+		Profiles: []tuiconfig.Profile{
+			{Name: "a", Theme: "adaptive"},
+		},
+	}
+	m := New(cfg, "", th)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = next.(Model)
+	m.screen = screenProfiles
+
+	// Simulate a non-active profile update.
+	next, _ = m.Update(profiles.ConfigChangedMsg{Config: cfg})
+	rm := next.(Model)
+
+	if rm.profilesModel.Width() != 80 {
+		t.Errorf("profilesModel.Width() after ConfigChangedMsg: want 80, got %d", rm.profilesModel.Width())
+	}
+}
