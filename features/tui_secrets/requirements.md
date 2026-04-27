@@ -26,7 +26,9 @@ The `value` field transported to/from the server is always the **encrypted blob*
 - Receives the project name and a `*session.Session` pointer at construction.
 - On `Init`: fetches secret list via `ListSecretsCmd`.
 - **modeList** behaviour:
-  - Renders a two-column table: `KEY` | `VALUE (decrypted)`. Values are decrypted inline using `session.Decrypt`; if decryption fails the cell shows `<error>`.
+  - Renders a two-column table using the `charm.land/bubbles/v2/table` component: columns `KEY` and `VALUE (decrypted)`. Values are decrypted inline using `session.Decrypt`; if decryption fails the cell shows `<error>`.
+  - The `table.Model` is embedded in the `secrets.Model` and re-built (rows + cursor) whenever data or page changes. The table's built-in key handling is **disabled** (focus not granted); all navigation is handled by the secrets model.
+  - Column widths are computed dynamically: key column = max(len(key), 3), value column = max(len(value), 5).
   - Cursor movement: `↑`/`↓` (wraps), `PgUp`/`PgDn` or `←`/`→` for pagination (pageSize = 10, consistent with `tui_projects`).
   - `n` → switch to `modeAdd` (empty key/value inputs).
   - `e` → switch to `modeEdit` (pre-fill key (read-only) and decrypted value into inputs).

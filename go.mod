@@ -3,6 +3,7 @@ module ekvs
 go 1.25.0
 
 require (
+	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	github.com/charmbracelet/lipgloss v1.1.0
 	golang.org/x/crypto v0.50.0
@@ -10,8 +11,9 @@ require (
 )
 
 require (
+	charm.land/lipgloss/v2 v2.0.2 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/aymanbagabas/go-udiff v0.3.1 // indirect
+	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260416155717-489999b90468 // indirect
 	github.com/charmbracelet/x/ansi v0.11.7 // indirect

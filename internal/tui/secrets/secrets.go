@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"golang.design/x/clipboard"
 
@@ -52,14 +53,57 @@ type Model struct {
 	err         error
 	loading     bool
 
+	table      table.Model
 	spinner    spinner.Model
 	footer     footer.Model
 	modalModel modal.Model
 }
 
+// buildTable constructs a bubbles table model for the current page.
+func (m Model) buildTable() table.Model {
+	items := m.pageSecrets()
+
+	// Compute column widths.
+	keyW := 3 // minimum "KEY"
+	valW := 5 // minimum "VALUE"
+	for _, e := range items {
+		if len(e.Key) > keyW {
+			keyW = len(e.Key)
+		}
+		dec := m.decryptedValue(e)
+		if len(dec) > valW {
+			valW = len(dec)
+		}
+	}
+
+	cols := []table.Column{
+		{Title: "KEY", Width: keyW},
+		{Title: "VALUE", Width: valW},
+	}
+
+	rows := make([]table.Row, len(items))
+	for i, e := range items {
+		rows[i] = table.Row{e.Key, m.decryptedValue(e)}
+	}
+
+	// Each column has padding(0,1) = 2 extra chars; account for both columns.
+	totalWidth := keyW + valW + 4
+
+	t := table.New(
+		table.WithColumns(cols),
+		table.WithRows(rows),
+		table.WithWidth(totalWidth),
+		table.WithHeight(len(rows)+1),
+	)
+	if len(rows) > 0 {
+		t.SetCursor(m.cursor)
+	}
+	return t
+}
+
 // New creates a Model ready to be initialised.
 func New(project string, c *client.Client, sess *session.Session, t theme.Theme) Model {
-	return Model{
+	m := Model{
 		project: project,
 		client:  c,
 		sess:    sess,
@@ -67,11 +111,13 @@ func New(project string, c *client.Client, sess *session.Session, t theme.Theme)
 		spinner: spinner.New(t),
 		footer:  footer.New(t),
 	}
+	m.table = m.buildTable()
+	return m
 }
 
 // newWithClient creates a Model using any apiClient implementation (used in tests).
 func newWithClient(project string, c apiClient, sess *session.Session, t theme.Theme) Model {
-	return Model{
+	m := Model{
 		project: project,
 		client:  c,
 		sess:    sess,
@@ -79,6 +125,8 @@ func newWithClient(project string, c apiClient, sess *session.Session, t theme.T
 		spinner: spinner.New(t),
 		footer:  footer.New(t),
 	}
+	m.table = m.buildTable()
+	return m
 }
 
 // ── commands ──────────────────────────────────────────────────────────────────
@@ -201,6 +249,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		m.mode = modeList
+		m.table = m.buildTable()
 		return m, nil
 
 	case ErrMsg:
@@ -234,20 +283,24 @@ func (m Model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if len(items) > 0 {
 			m.cursor = (m.cursor - 1 + len(items)) % len(items)
+			m.table = m.buildTable()
 		}
 	case "down", "j":
 		if len(items) > 0 {
 			m.cursor = (m.cursor + 1) % len(items)
+			m.table = m.buildTable()
 		}
 	case "right":
 		if m.page < m.totalPages()-1 {
 			m.page++
 			m.cursor = 0
+			m.table = m.buildTable()
 		}
 	case "left":
 		if m.page > 0 {
 			m.page--
 			m.cursor = 0
+			m.table = m.buildTable()
 		}
 	case "n":
 		m.mode = modeAdd
@@ -429,35 +482,8 @@ func (m Model) View() tea.View {
 			sb.WriteString(m.theme.MenuItemStyle().Render("  (no secrets)"))
 			sb.WriteString("\n")
 		} else {
-			// Compute max key width for alignment.
-			maxKey := 3 // minimum "KEY"
-			for _, e := range items {
-				if len(e.Key) > maxKey {
-					maxKey = len(e.Key)
-				}
-			}
-
-			// Header row.
-			header := fmt.Sprintf("  %-*s │ VALUE (decrypted)", maxKey, "KEY")
-			sb.WriteString(m.theme.TableHeaderStyle().Render(header))
+			sb.WriteString(m.table.View())
 			sb.WriteString("\n")
-
-			// Separator line.
-			sep := "  " + strings.Repeat("─", maxKey) + "─┼─" + strings.Repeat("─", 20)
-			sb.WriteString(m.theme.TableHeaderStyle().Render(sep))
-			sb.WriteString("\n")
-
-			// Data rows.
-			for i, e := range items {
-				val := m.decryptedValue(e)
-				line := fmt.Sprintf("  %-*s │ %s", maxKey, e.Key, val)
-				if i == m.cursor {
-					sb.WriteString(m.theme.SelectedMenuItemStyle().Render(">" + line[1:]))
-				} else {
-					sb.WriteString(m.theme.MenuItemStyle().Render(line))
-				}
-				sb.WriteString("\n")
-			}
 		}
 
 	case modeAdd:

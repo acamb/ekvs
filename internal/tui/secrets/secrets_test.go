@@ -619,11 +619,13 @@ func TestSecretsModel_TableSeparatorPresent(t *testing.T) {
 	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: blob}})
 
 	view := m.View().Content
-	if !strings.Contains(view, "─") {
-		t.Errorf("table view should contain separator line '─', got:\n%s", view)
+	// The bubbles/v2 table component renders a header row and data rows
+	// side-by-side using lipgloss. Both KEY and VALUE columns must appear.
+	if !strings.Contains(view, "KEY") {
+		t.Errorf("table view should contain 'KEY' header, got:\n%s", view)
 	}
-	if !strings.Contains(view, "┼") {
-		t.Errorf("table view should contain column separator '┼', got:\n%s", view)
+	if !strings.Contains(view, "VALUE") {
+		t.Errorf("table view should contain 'VALUE' header, got:\n%s", view)
 	}
 }
 
