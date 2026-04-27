@@ -7,6 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"ekvs/internal/tui/client"
+	"ekvs/internal/tui/footer"
+	"ekvs/internal/tui/modal"
+	"ekvs/internal/tui/spinner"
 	"ekvs/internal/tui/theme"
 )
 
@@ -19,6 +22,7 @@ const (
 	modeList   mode = iota
 	modeCreate      // inline text input at the bottom
 	modeDelete      // inline y/n confirmation at the bottom
+	modeError       // blocking error modal overlay
 )
 
 // apiClient is the subset of client.Client used by this model.
@@ -40,16 +44,30 @@ type Model struct {
 	input    string // accumulated text in modeCreate
 	err      error
 	loading  bool
+
+	spinner    spinner.Model
+	footer     footer.Model
+	modalModel modal.Model
 }
 
 // New creates a Model ready to be initialised.
 func New(c *client.Client, t theme.Theme) Model {
-	return Model{client: c, theme: t}
+	return Model{
+		client:  c,
+		theme:   t,
+		spinner: spinner.New(t),
+		footer:  footer.New(t),
+	}
 }
 
 // newWithClient creates a Model using any apiClient implementation (used in tests).
 func newWithClient(c apiClient, t theme.Theme) Model {
-	return Model{client: c, theme: t}
+	return Model{
+		client:  c,
+		theme:   t,
+		spinner: spinner.New(t),
+		footer:  footer.New(t),
+	}
 }
 
 // ── commands ─────────────────────────────────────────────────────────────────
@@ -126,10 +144,10 @@ func (m Model) selectedName() string {
 
 // ── Init / Update / View ──────────────────────────────────────────────────────
 
-// Init implements tea.Model. Emits a fetch command immediately.
+// Init implements tea.Model. Emits a fetch command and the first spinner tick.
 func (m Model) Init() tea.Cmd {
 	m.loading = true
-	return m.fetchCmd()
+	return tea.Batch(m.fetchCmd(), m.spinner.Init())
 }
 
 // UpdateTyped returns the concrete Model type for use by the root model.
@@ -143,6 +161,25 @@ func (m Model) UpdateTyped(msg tea.Msg) (Model, tea.Cmd) {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Delegate spinner ticks.
+	if _, ok := msg.(spinner.TickMsg); ok {
+		s, cmd := m.spinner.Update(msg)
+		m.spinner = s
+		return m, cmd
+	}
+
+	// When the error modal is active, route all input to it.
+	if m.mode == modeError {
+		if _, ok := msg.(modal.DismissMsg); ok {
+			m.mode = modeList
+			m.err = nil
+			return m, nil
+		}
+		updated, cmd := m.modalModel.Update(msg)
+		m.modalModel = updated
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 
 	// ── server responses ────────────────────────────────────────────────────
@@ -160,7 +197,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		m.loading = false
 		m.err = msg.Err
-		m.mode = modeList
+		m.modalModel = modal.New(m.theme, msg.Err.Error())
+		m.mode = modeError
 		return m, nil
 
 	// ── keyboard ────────────────────────────────────────────────────────────
@@ -275,8 +313,15 @@ func (m Model) View() tea.View {
 	sb.WriteString("\n")
 
 	if m.loading {
-		sb.WriteString(m.theme.MenuItemStyle().Render("  Loading…"))
+		sb.WriteString(m.theme.MenuItemStyle().Render(
+			fmt.Sprintf("  %s  Loading…", m.spinner.View())))
 		sb.WriteString("\n")
+		return tea.NewView(sb.String())
+	}
+
+	// Error modal overlay: render the modal instead of normal content.
+	if m.mode == modeError {
+		sb.WriteString(m.modalModel.View(0))
 		return tea.NewView(sb.String())
 	}
 
@@ -308,24 +353,18 @@ func (m Model) View() tea.View {
 		sb.WriteString("\n")
 	}
 
-	// Error line.
-	if m.err != nil {
-		sb.WriteString(m.theme.ErrorStyle().Render(fmt.Sprintf("  Error: %s", m.err.Error())))
-		sb.WriteString("\n")
-	}
-
-	// Status bar.
+	// Footer hints.
 	pageInfo := fmt.Sprintf("Page %d/%d", m.page+1, m.totalPages())
 	var hints string
 	switch m.mode {
 	case modeList:
-		hints = "↑/↓ navigate • ←/→ page • n new • d delete • Esc back"
+		hints = fmt.Sprintf("%s  ↑/↓ navigate • ←/→ page • n new • d delete • Esc back", pageInfo)
 	case modeCreate:
 		hints = "Enter confirm • Esc cancel"
 	case modeDelete:
 		hints = "y confirm • n/Esc cancel"
 	}
-	sb.WriteString(m.theme.StatusBarStyle().Render(fmt.Sprintf("%s  %s", pageInfo, hints)))
+	sb.WriteString(m.footer.View(hints))
 
 	return tea.NewView(sb.String())
 }

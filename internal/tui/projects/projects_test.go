@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"ekvs/internal/tui/modal"
+	"ekvs/internal/tui/spinner"
 	"ekvs/internal/tui/theme"
 )
 
@@ -333,12 +335,13 @@ func TestProjectsModel_LoadingState(t *testing.T) {
 	m := newTestModel(t, nil)
 	cmd := m.Init()
 	if cmd == nil {
-		t.Fatal("Init should return a fetch cmd")
+		t.Fatal("Init should return a non-nil cmd")
 	}
-	// loading is set inside Init — verify by running command and checking model response.
-	result := cmd()
-	if _, ok := result.(FetchedMsg); !ok {
-		t.Errorf("want FetchedMsg from Init cmd, got %T", result)
+	// Init now returns a tea.Batch (fetch + spinner tick).
+	// Verify the fetch path independently via fetchCmd.
+	fetchResult := m.fetchCmd()()
+	if _, ok := fetchResult.(FetchedMsg); !ok {
+		t.Errorf("want FetchedMsg from fetchCmd, got %T", fetchResult)
 	}
 
 	// After FetchedMsg, loading must be false.
@@ -577,5 +580,79 @@ func TestProjectsModel_EnterOpensSecrets(t *testing.T) {
 	}
 	if osm.Project != "myproject" {
 		t.Errorf("want Project=%q, got %q", "myproject", osm.Project)
+	}
+}
+
+// ── Spinner integration ───────────────────────────────────────────────────────
+
+func TestProjectsModel_SpinnerTickForwarded(t *testing.T) {
+	m := newTestModel(t, nil)
+	m.loading = true
+	frameBefore := m.spinner.View()
+	m2, cmd := m.UpdateTyped(spinner.TickMsg{})
+	// Frame should advance.
+	if m2.spinner.View() == frameBefore {
+		t.Error("spinner frame should advance on TickMsg")
+	}
+	// Next tick command should be scheduled.
+	if cmd == nil {
+		t.Error("Update(TickMsg) should return next tick cmd")
+	}
+}
+
+// ── Footer hints ──────────────────────────────────────────────────────────────
+
+func TestProjectsModel_FooterShowsHints(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, []string{"p1"})
+
+	view := m.View().Content
+	if !strings.Contains(view, "navigate") {
+		t.Errorf("footer should contain navigation hints, got:\n%s", view)
+	}
+}
+
+func TestProjectsModel_FooterHintsChangeByMode(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, []string{"p1"})
+
+	// Create mode.
+	m, _ = sendKey(m, "n")
+	view := m.View().Content
+	if !strings.Contains(view, "confirm") {
+		t.Errorf("create mode footer should contain 'confirm', got:\n%s", view)
+	}
+}
+
+// ── Error modal ───────────────────────────────────────────────────────────────
+
+func TestProjectsModel_ErrSwitchesToModalMode(t *testing.T) {
+	m := newTestModel(t, nil)
+	next, _ := m.Update(ErrMsg{Err: errors.New("boom")})
+	mm := next.(Model)
+
+	if mm.mode != modeError {
+		t.Errorf("want modeError after ErrMsg, got %v", mm.mode)
+	}
+}
+
+func TestProjectsModel_ModalDismissReturnsToList(t *testing.T) {
+	m := newTestModel(t, nil)
+	next, _ := m.Update(ErrMsg{Err: errors.New("boom")})
+	mm := next.(Model)
+
+	// Dismiss the modal with Enter.
+	mm2, cmd := mm.UpdateTyped(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// The modal emits DismissMsg as a command; run it.
+	if cmd != nil {
+		if dmsg, ok := cmd().(modal.DismissMsg); ok {
+			mm2, _ = mm2.UpdateTyped(dmsg)
+		}
+	}
+	if mm2.mode != modeList {
+		t.Errorf("want modeList after modal dismiss, got %v", mm2.mode)
+	}
+	if mm2.err != nil {
+		t.Error("err should be nil after modal dismiss")
 	}
 }
