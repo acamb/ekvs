@@ -131,7 +131,43 @@ Same structural changes as Task 6, plus tabular list rendering:
 
 ---
 
-## Task 8 — Update `profiles` screen (footer + modal + split layout)
+## Task 8 — Secrets screen: key search/filter
+
+**Description**  
+Add an incremental search mode (`modeSearch`) to the secrets screen that allows
+the user to filter the displayed rows by key substring.
+
+- Add `modeSearch mode` constant.
+- Add `searchQuery string` field to `secrets.Model`.
+- In `modeList`, pressing `/` switches to `modeSearch` and clears `searchQuery`.
+- In `modeSearch`:
+  - Typing any printable character appends to `searchQuery`; `Backspace` removes
+    the last rune.
+  - The bubbles table is rebuilt on every keystroke with only the rows whose
+    `Key` contains `searchQuery` (case-insensitive, using
+    `strings.Contains(strings.ToLower(key), strings.ToLower(query))`).
+  - `cursor` is reset to 0 whenever the filtered set changes.
+  - `Enter` or `Esc` exits `modeSearch`, returns to `modeList` keeping the
+    current filter active so the table stays filtered; a second `Esc` (while
+    already in `modeList` with a non-empty query) clears the filter and rebuilds
+    the full table.
+  - The footer hint line shows: `"Search: <query>█  Enter/Esc confirm • Esc clear"`.
+- `pageSecrets()` respects the active `searchQuery`: when non-empty it filters
+  `m.secrets` before slicing the page window; pagination (`totalPages`) is
+  recomputed accordingly.
+- `buildTable()` requires no changes beyond receiving the already-filtered slice
+  from `pageSecrets()`.
+- Footer hint in `modeList` gains: `• / search` (and `• Esc clear filter` when
+  `searchQuery != ""`).
+
+**Files**
+- `internal/tui/secrets/secrets.go`
+- `internal/tui/secrets/secrets_test.go` (add tests for modeSearch transitions,
+  filtering behaviour, cursor reset, and clear-on-double-Esc)
+
+---
+
+## Task 9 — Update `profiles` screen (footer + modal + split layout)
 
 **Description**  
 - Add `footer.Model` field; replace manual hints with `m.footer.View(hints)`.
@@ -164,7 +200,7 @@ Same structural changes as Task 6, plus tabular list rendering:
 
 ---
 
-## Task 9 — Update `auth` screen (modal)
+## Task 10 — Update `auth` screen (modal)
 
 **Description**  
 Replace `stateError`/`errMsg string` in `auth/auth.go` with `modal.Model`:
@@ -182,7 +218,7 @@ Replace `stateError`/`errMsg string` in `auth/auth.go` with `modal.Model`:
 
 ---
 
-## Task 10 — Fix auth error in root model
+## Task 11 — Fix auth error in root model
 
 **Description**  
 In `root.go`, when `session.SetAuthenticated` returns an error (unsupported key
@@ -199,7 +235,7 @@ type), currently the code silently redirects to `screenMain`. Instead:
 
 ---
 
-## Task 11 — Update `wizard`, `mainModel`, `profileSelect` (footer)
+## Task 12 — Update `wizard`, `mainModel`, `profileSelect` (footer)
 
 **Description**  
 Add `footer.Model` to `wizard.Model`, `mainModel`, and `profileSelectModel`.
@@ -213,7 +249,7 @@ with `m.footer.View(hints)`.
 
 ---
 
-## Task 12 — Uniform background fill in root View
+## Task 13 — Uniform background fill in root View
 
 **Description**  
 In `root.Model.View()`, after delegating to the active sub-screen, wrap the
@@ -235,7 +271,7 @@ the raw content unchanged.
 
 ---
 
-## Task 13 — Final review, tests and build verification
+## Task 14 — Final review, tests and build verification
 
 **Description**  
 - Run `go build ./...` and `go test ./...` and fix any remaining issues.
