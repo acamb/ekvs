@@ -12,7 +12,9 @@ import (
 
 	internalssh "ekvs/internal/ssh"
 	"ekvs/internal/tui/client"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/session"
+	"ekvs/internal/tui/spinner"
 	"ekvs/internal/tui/theme"
 )
 
@@ -155,20 +157,30 @@ func TestSecretsModel_ErrDisplayed(t *testing.T) {
 	}
 }
 
-func TestSecretsModel_ErrClearedOnKeypress(t *testing.T) {
+func TestSecretsModel_ErrClearedOnModalDismiss(t *testing.T) {
 	m := newTestModel(t, nil)
 	next, _ := m.Update(ErrMsg{Err: errors.New("boom")})
 	m = next.(Model)
 
-	m, _ = sendKey(m, "esc")
-	// esc emits BackMsg but clears err first
-	// use a neutral key that doesn't navigate away
-	m2 := newTestModel(t, nil)
-	next2, _ := m2.Update(ErrMsg{Err: errors.New("boom")})
-	m2 = next2.(Model)
-	m2, _ = sendKey(m2, "n") // switches to modeAdd but clears err
+	if m.mode != modeError {
+		t.Fatalf("want modeError after ErrMsg, got %v", m.mode)
+	}
+	if m.err == nil {
+		t.Fatal("err should be set after ErrMsg")
+	}
+
+	// Dismiss modal with Enter → err should be cleared.
+	m2, cmd := m.UpdateTyped(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil {
+		if dmsg, ok := cmd().(modal.DismissMsg); ok {
+			m2, _ = m2.UpdateTyped(dmsg)
+		}
+	}
+	if m2.mode != modeList {
+		t.Errorf("want modeList after dismiss, got %v", m2.mode)
+	}
 	if m2.err != nil {
-		t.Errorf("err should be cleared on keypress, got %v", m2.err)
+		t.Errorf("err should be cleared after modal dismiss, got %v", m2.err)
 	}
 }
 
@@ -477,5 +489,169 @@ func TestSecretsModel_ViewShowsErrorOnDecryptFail(t *testing.T) {
 	view := m.View().Content
 	if !strings.Contains(view, "<error>") {
 		t.Errorf("view should show <error> for failed decryption, got:\n%s", view)
+	}
+}
+
+// ── Spinner ───────────────────────────────────────────────────────────────────
+
+func TestSecretsModel_SpinnerTickForwarded(t *testing.T) {
+	m := newTestModel(t, nil)
+	m.loading = true
+	frameBefore := m.spinner.View()
+	m2, cmd := m.UpdateTyped(spinner.TickMsg{})
+	if m2.spinner.View() == frameBefore {
+		t.Error("spinner frame should advance on TickMsg")
+	}
+	if cmd == nil {
+		t.Error("Update(TickMsg) should return next tick cmd")
+	}
+}
+
+func TestSecretsModel_LoadingViewContainsSpinner(t *testing.T) {
+	m := newTestModel(t, nil)
+	m.loading = true
+	view := m.View().Content
+	if !strings.Contains(view, "Loading") {
+		t.Errorf("loading view should contain 'Loading', got:\n%s", view)
+	}
+}
+
+func TestSecretsModel_InitReturnsBatchCmd(t *testing.T) {
+	m := newTestModel(t, nil)
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init() should return a non-nil cmd")
+	}
+	// Fetch path works independently.
+	result := m.fetchCmd()()
+	if _, ok := result.(FetchedMsg); !ok {
+		t.Errorf("fetchCmd should return FetchedMsg, got %T", result)
+	}
+}
+
+// ── Footer ────────────────────────────────────────────────────────────────────
+
+func TestSecretsModel_FooterShowsHints(t *testing.T) {
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "v")
+	m := newTestModel(t, nil)
+	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: blob}})
+
+	view := m.View().Content
+	if !strings.Contains(view, "navigate") {
+		t.Errorf("footer should contain navigation hints, got:\n%s", view)
+	}
+}
+
+func TestSecretsModel_FooterHintsChangeByMode(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, nil)
+
+	// Add mode, field 0 (key): footer shows "next field".
+	m, _ = sendKey(m, "n")
+	view := m.View().Content
+	if !strings.Contains(view, "next field") {
+		t.Errorf("add mode field-0 footer should contain 'next field', got:\n%s", view)
+	}
+
+	// Advance to field 1 (value): footer shows "confirm".
+	for _, ch := range "k" {
+		m, _ = m.UpdateTyped(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+	}
+	m, _ = sendKey(m, "tab")
+	view2 := m.View().Content
+	if !strings.Contains(view2, "confirm") {
+		t.Errorf("add mode field-1 footer should contain 'confirm', got:\n%s", view2)
+	}
+}
+
+// ── Error modal ───────────────────────────────────────────────────────────────
+
+func TestSecretsModel_ErrSwitchesToModalMode(t *testing.T) {
+	m := newTestModel(t, nil)
+	next, _ := m.Update(ErrMsg{Err: errors.New("boom")})
+	mm := next.(Model)
+
+	if mm.mode != modeError {
+		t.Errorf("want modeError after ErrMsg, got %v", mm.mode)
+	}
+}
+
+func TestSecretsModel_ModalViewContainsError(t *testing.T) {
+	m := newTestModel(t, nil)
+	next, _ := m.Update(ErrMsg{Err: errors.New("network timeout")})
+	mm := next.(Model)
+
+	view := mm.View().Content
+	if !strings.Contains(view, "network timeout") {
+		t.Errorf("modal view should contain error message, got:\n%s", view)
+	}
+}
+
+// ── Tabular display ───────────────────────────────────────────────────────────
+
+func TestSecretsModel_TableHeaderPresent(t *testing.T) {
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "value1")
+	m := newTestModel(t, nil)
+	th, _ := theme.NewTheme("adaptive")
+	fc := &fakeClient{}
+	m = newWithClient("proj", fc, sess, th)
+	m = applyFetched(m, []client.SecretEntry{
+		{Key: "mykey", Value: blob},
+	})
+
+	view := m.View().Content
+	if !strings.Contains(view, "KEY") {
+		t.Errorf("table view should contain 'KEY' header, got:\n%s", view)
+	}
+	if !strings.Contains(view, "VALUE") {
+		t.Errorf("table view should contain 'VALUE' header, got:\n%s", view)
+	}
+}
+
+func TestSecretsModel_TableSeparatorPresent(t *testing.T) {
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "v")
+	th, _ := theme.NewTheme("adaptive")
+	fc := &fakeClient{}
+	m := newWithClient("proj", fc, sess, th)
+	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: blob}})
+
+	view := m.View().Content
+	if !strings.Contains(view, "─") {
+		t.Errorf("table view should contain separator line '─', got:\n%s", view)
+	}
+	if !strings.Contains(view, "┼") {
+		t.Errorf("table view should contain column separator '┼', got:\n%s", view)
+	}
+}
+
+func TestSecretsModel_TableRowsAligned(t *testing.T) {
+	sess := testSession(t)
+	blob1 := encryptBlob(t, sess, "val1")
+	blob2 := encryptBlob(t, sess, "val2")
+	th, _ := theme.NewTheme("adaptive")
+	fc := &fakeClient{}
+	m := newWithClient("proj", fc, sess, th)
+	m = applyFetched(m, []client.SecretEntry{
+		{Key: "short", Value: blob1},
+		{Key: "a-much-longer-key", Value: blob2},
+	})
+
+	view := m.View().Content
+	// Both keys must appear in the rendered output.
+	if !strings.Contains(view, "short") {
+		t.Errorf("view should contain key 'short', got:\n%s", view)
+	}
+	if !strings.Contains(view, "a-much-longer-key") {
+		t.Errorf("view should contain key 'a-much-longer-key', got:\n%s", view)
+	}
+	// Both values must be decrypted and visible.
+	if !strings.Contains(view, "val1") {
+		t.Errorf("view should contain decrypted value 'val1', got:\n%s", view)
+	}
+	if !strings.Contains(view, "val2") {
+		t.Errorf("view should contain decrypted value 'val2', got:\n%s", view)
 	}
 }

@@ -8,7 +8,10 @@ import (
 	"golang.design/x/clipboard"
 
 	"ekvs/internal/tui/client"
+	"ekvs/internal/tui/footer"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/session"
+	"ekvs/internal/tui/spinner"
 	"ekvs/internal/tui/theme"
 )
 
@@ -22,6 +25,7 @@ const (
 	modeAdd         // two-field input: key then value
 	modeEdit        // value field only (key is read-only)
 	modeDelete      // inline y/n confirmation
+	modeError       // blocking error modal overlay
 )
 
 // apiClient is the subset of client.Client used by this model.
@@ -47,16 +51,34 @@ type Model struct {
 	activeField int // 0 = key field, 1 = value field (in modeAdd/modeEdit)
 	err         error
 	loading     bool
+
+	spinner    spinner.Model
+	footer     footer.Model
+	modalModel modal.Model
 }
 
 // New creates a Model ready to be initialised.
 func New(project string, c *client.Client, sess *session.Session, t theme.Theme) Model {
-	return Model{project: project, client: c, sess: sess, theme: t}
+	return Model{
+		project: project,
+		client:  c,
+		sess:    sess,
+		theme:   t,
+		spinner: spinner.New(t),
+		footer:  footer.New(t),
+	}
 }
 
 // newWithClient creates a Model using any apiClient implementation (used in tests).
 func newWithClient(project string, c apiClient, sess *session.Session, t theme.Theme) Model {
-	return Model{project: project, client: c, sess: sess, theme: t}
+	return Model{
+		project: project,
+		client:  c,
+		sess:    sess,
+		theme:   t,
+		spinner: spinner.New(t),
+		footer:  footer.New(t),
+	}
 }
 
 // ── commands ──────────────────────────────────────────────────────────────────
@@ -136,7 +158,7 @@ func (m Model) selectedEntry() (client.SecretEntry, bool) {
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
 	m.loading = true
-	return m.fetchCmd()
+	return tea.Batch(m.fetchCmd(), m.spinner.Init())
 }
 
 // UpdateTyped returns the concrete Model type for use by the root model.
@@ -150,6 +172,25 @@ func (m Model) UpdateTyped(msg tea.Msg) (Model, tea.Cmd) {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Delegate spinner ticks.
+	if _, ok := msg.(spinner.TickMsg); ok {
+		s, cmd := m.spinner.Update(msg)
+		m.spinner = s
+		return m, cmd
+	}
+
+	// When the error modal is active, route all input to it.
+	if m.mode == modeError {
+		if _, ok := msg.(modal.DismissMsg); ok {
+			m.mode = modeList
+			m.err = nil
+			return m, nil
+		}
+		updated, cmd := m.modalModel.Update(msg)
+		m.modalModel = updated
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 
 	case FetchedMsg:
@@ -165,6 +206,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		m.loading = false
 		m.err = msg.Err
+		m.modalModel = modal.New(m.theme, msg.Err.Error())
+		m.mode = modeError
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -366,8 +409,15 @@ func (m Model) View() tea.View {
 	sb.WriteString("\n")
 
 	if m.loading {
-		sb.WriteString(m.theme.MenuItemStyle().Render("  Loading…"))
+		sb.WriteString(m.theme.MenuItemStyle().Render(
+			fmt.Sprintf("  %s  Loading…", m.spinner.View())))
 		sb.WriteString("\n")
+		return tea.NewView(sb.String())
+	}
+
+	// Error modal overlay.
+	if m.mode == modeError {
+		sb.WriteString(m.modalModel.View(0))
 		return tea.NewView(sb.String())
 	}
 
@@ -386,12 +436,21 @@ func (m Model) View() tea.View {
 					maxKey = len(e.Key)
 				}
 			}
-			header := fmt.Sprintf("  %-*s  VALUE (decrypted)", maxKey, "KEY")
-			sb.WriteString(m.theme.StatusBarStyle().Render(header))
+
+			// Header row.
+			header := fmt.Sprintf("  %-*s │ VALUE (decrypted)", maxKey, "KEY")
+			sb.WriteString(m.theme.TableHeaderStyle().Render(header))
 			sb.WriteString("\n")
+
+			// Separator line.
+			sep := "  " + strings.Repeat("─", maxKey) + "─┼─" + strings.Repeat("─", 20)
+			sb.WriteString(m.theme.TableHeaderStyle().Render(sep))
+			sb.WriteString("\n")
+
+			// Data rows.
 			for i, e := range items {
 				val := m.decryptedValue(e)
-				line := fmt.Sprintf("  %-*s  %s", maxKey, e.Key, val)
+				line := fmt.Sprintf("  %-*s │ %s", maxKey, e.Key, val)
 				if i == m.cursor {
 					sb.WriteString(m.theme.SelectedMenuItemStyle().Render(">" + line[1:]))
 				} else {
@@ -433,18 +492,12 @@ func (m Model) View() tea.View {
 
 	sb.WriteString("\n")
 
-	// Error line.
-	if m.err != nil {
-		sb.WriteString(m.theme.ErrorStyle().Render(fmt.Sprintf("  Error: %s", m.err.Error())))
-		sb.WriteString("\n")
-	}
-
-	// Status bar.
+	// Footer hints.
 	pageInfo := fmt.Sprintf("Page %d/%d", m.page+1, m.totalPages())
 	var hints string
 	switch m.mode {
 	case modeList:
-		hints = "↑/↓ navigate • ←/→ page • n add • e edit • d delete • c copy • Esc back"
+		hints = fmt.Sprintf("%s  ↑/↓ navigate • ←/→ page • n add • e edit • d delete • c copy • Esc back", pageInfo)
 	case modeAdd:
 		if m.activeField == 0 {
 			hints = "Tab/Enter next field • Esc cancel"
@@ -456,7 +509,7 @@ func (m Model) View() tea.View {
 	case modeDelete:
 		hints = "y confirm • any key cancel"
 	}
-	sb.WriteString(m.theme.StatusBarStyle().Render(fmt.Sprintf("%s  %s", pageInfo, hints)))
+	sb.WriteString(m.footer.View(hints))
 
 	return tea.NewView(sb.String())
 }
