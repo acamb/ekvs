@@ -435,11 +435,12 @@ func (m Model) saveForm() (tea.Model, tea.Cmd) {
 		m.activeProfile = profile.Name
 		m.pendingReload = profile
 		m.mode = modeReloadPrompt
-		// Notify root about the config change (ActiveDeleted is always false here).
-		return m, func() tea.Msg { return ConfigChangedMsg{Config: cfg} }
+		// Do NOT emit ConfigChangedMsg here: the reload prompt is still pending.
+		// Root will receive the message only after the user answers the prompt.
+		return m, nil
 	}
 
-	// Non-active edit or create: return to list.
+	// Non-active edit or create: return to list and notify root.
 	m.mode = modeList
 	if !m.form.isEdit {
 		// Position cursor at the newly created profile.
@@ -508,12 +509,17 @@ func (m Model) updateReloadPrompt(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		profile := m.pendingReload
+		cfg := m.config
 		m.mode = modeList
 		m.pendingReload = tuiconfig.Profile{}
-		return m, func() tea.Msg { return ReloadActiveMsg{Profile: profile} }
+		return m, func() tea.Msg { return ReloadActiveMsg{Profile: profile, Config: cfg} }
 	case "n", "N", "enter", "esc":
+		cfg := m.config
 		m.mode = modeList
 		m.pendingReload = tuiconfig.Profile{}
+		// Notify root to update its in-memory config even though the active
+		// profile is NOT being reloaded into the session.
+		return m, func() tea.Msg { return ConfigChangedMsg{Config: cfg} }
 	case "ctrl+c":
 		return m, tea.Quit
 	}

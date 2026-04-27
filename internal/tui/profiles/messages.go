@@ -22,8 +22,10 @@ type SwitchMsg struct {
 // profile and confirmed the reload prompt. The root model handles this
 // identically to SwitchMsg: session cleared, theme re-resolved, and the main
 // menu is shown with the updated profile active.
+// Config carries the updated ConfigFile so root can update its in-memory state.
 type ReloadActiveMsg struct {
 	Profile tuiconfig.Profile
+	Config  *tuiconfig.ConfigFile
 }
 
 // ConfigChangedMsg is emitted after any successful CRUD operation (create,

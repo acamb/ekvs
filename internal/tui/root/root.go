@@ -234,6 +234,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case profiles.ReloadActiveMsg:
 		m.session.Clear()
+		if msg.Config != nil {
+			m.config = msg.Config
+		}
 		t := resolveTheme(msg.Profile.Theme, m.theme)
 		m.theme = t
 		m.profile = msg.Profile
