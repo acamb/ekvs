@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	internalssh "ekvs/internal/ssh"
+	"ekvs/internal/tui/modal"
 	"ekvs/internal/tui/theme"
 )
 
@@ -21,13 +22,6 @@ type AuthSuccessMsg struct {
 // AuthCancelMsg is emitted when the user cancels authentication.
 type AuthCancelMsg struct{}
 
-type authState int
-
-const (
-	statePrompt authState = iota
-	stateError
-)
-
 // tryLoadMsg is used internally to carry the result of the initial key-load attempt.
 type tryLoadMsg struct {
 	success *AuthSuccessMsg
@@ -36,11 +30,11 @@ type tryLoadMsg struct {
 
 // Model is the bubbletea model for the passphrase prompt screen.
 type Model struct {
-	pemBytes []byte
-	state    authState
-	input    string
-	errMsg   string
-	theme    theme.Theme
+	pemBytes   []byte
+	input      string
+	theme      theme.Theme
+	showModal  bool
+	modalModel modal.Model
 }
 
 // New creates a new auth Model that will try to load the SSH key at identityFile.
@@ -95,16 +89,28 @@ func (m Model) UpdateTyped(msg tea.Msg) (Model, tea.Cmd) {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// When the error modal is active, route all input to it.
+	if m.showModal {
+		if _, ok := msg.(modal.DismissMsg); ok {
+			m.showModal = false
+			m.input = ""
+			return m, nil
+		}
+		updated, cmd := m.modalModel.Update(msg)
+		m.modalModel = updated
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tryLoadMsg:
 		if msg.success != nil {
 			return m, func() tea.Msg { return *msg.success }
 		}
 		if msg.err != nil {
-			m.state = stateError
-			m.errMsg = msg.err.Error()
+			m.modalModel = modal.New(m.theme, msg.err.Error())
+			m.showModal = true
 		}
-		// else: no error → passphrase required, stay in statePrompt
+		// else: no error → passphrase required, stay at prompt
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -113,18 +119,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return AuthCancelMsg{} }
 
 		case "enter":
-			if m.state == stateError {
-				// Retry
-				m.state = statePrompt
-				m.input = ""
-				m.errMsg = ""
-				return m, m.Init()
-			}
-			// Submit passphrase
 			signer, pub, err := internalssh.ParsePrivateKeyWithPassphrase(m.pemBytes, []byte(m.input))
 			if err != nil {
-				m.state = stateError
-				m.errMsg = "wrong passphrase, press Enter to retry or Esc to cancel"
+				m.modalModel = modal.New(m.theme, "wrong passphrase — press Enter to retry or Esc to cancel")
+				m.showModal = true
 				return m, nil
 			}
 			return m, func() tea.Msg {
@@ -142,10 +140,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		default:
-			if m.state == statePrompt {
-				if text := msg.Key().Text; text != "" {
-					m.input += text
-				}
+			if text := msg.Key().Text; text != "" {
+				m.input += text
 			}
 		}
 	}
@@ -157,18 +153,14 @@ func (m Model) View() tea.View {
 	var sb strings.Builder
 	sb.WriteString(m.theme.TitleStyle().Render("Authentication"))
 	sb.WriteString("\n\n")
+	sb.WriteString(m.theme.MenuItemStyle().Render("Enter passphrase: "))
+	sb.WriteString(strings.Repeat("*", len([]rune(m.input))))
+	sb.WriteString("█\n\n")
 
-	switch m.state {
-	case statePrompt:
-		sb.WriteString(m.theme.MenuItemStyle().Render("Enter passphrase: "))
-		sb.WriteString(strings.Repeat("*", len([]rune(m.input))))
-		sb.WriteString("█\n\n")
+	if m.showModal {
+		sb.WriteString(m.modalModel.View(0))
+	} else {
 		sb.WriteString(m.theme.StatusBarStyle().Render("Enter confirm • Esc cancel"))
-
-	case stateError:
-		sb.WriteString(m.theme.ErrorStyle().Render(m.errMsg))
-		sb.WriteString("\n\n")
-		sb.WriteString(m.theme.StatusBarStyle().Render("Enter retry • Esc cancel"))
 	}
 
 	return tea.NewView(sb.String())
