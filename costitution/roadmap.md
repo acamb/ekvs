@@ -78,11 +78,11 @@
 20. **cli_encryption**
     Integrate encryption primitives into the CLI: encrypt values before sending, decrypt values after receiving.
 
-21. **cli_projects**
-    Commands: `project create`, `project list`, `project delete`.
+21. **export_secrets_to_env**
+    Commands: `export env projectName [--secrets comma_separated_list]`.
 
-22. **cli_secrets**
-    Commands: `secret set`, `secret get`, `secret list`, `secret delete`.
+22. **export_secrets_to_pipe**
+    Commands: `export pipe projectName [--secrets comma_separated_list]`.
 
 ---
 

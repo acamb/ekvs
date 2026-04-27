@@ -9,4 +9,6 @@ Each user will have their own key-value store, and each store can have multiple 
 The main goal is to manage secrets in a simple and secure way using 3 main components:
 * the server
 * the TUI client for managing the key-value stores
-* the CLI client for secret provisioning, supporting various methods (export to environment, write to FIFO, etc...)
+* the CLI client for secret provisioning, supporting various methods (export to environment, write to pipe, etc...)
+
+The goal of the CLI client is to provision secrets to other applications supporting various deployment scenarios, such as CI pipelines, containers, standalone applications, etc...
