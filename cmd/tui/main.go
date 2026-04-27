@@ -5,10 +5,11 @@ import (
 	"log"
 	"os"
 
-	tea "charm.land/bubbletea/v2"
 	tuiconfig "ekvs/internal/tui/config"
 	"ekvs/internal/tui/root"
 	"ekvs/internal/tui/theme"
+
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -33,7 +34,7 @@ func main() {
 	// no longer read the response and blocks until its timeout (~5-6 s).
 	_ = lipgloss.HasDarkBackground()
 
-	m := root.New(cf, defaultTheme)
+	m := root.New(cf, *configPath, defaultTheme)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		log.Printf("TUI error: %v", err)

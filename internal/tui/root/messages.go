@@ -10,5 +10,8 @@ type triggerAuthMsg struct{ returnTo screen }
 // If the session is not authenticated, auth is triggered first.
 type triggerProjectsMsg struct{}
 
+// triggerProfilesMsg requests navigation to the Profiles screen from the main menu.
+type triggerProfilesMsg struct{}
+
 // profileSwitchMsg requests a profile switch; the session is cleared.
 type profileSwitchMsg struct{ profile tuiconfig.Profile }

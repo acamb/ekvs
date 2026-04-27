@@ -19,7 +19,7 @@ type menuItem struct {
 func defaultMenuItems() []menuItem {
 	return []menuItem{
 		{ID: "projects", Label: "Projects"},
-		{ID: "settings", Label: "Settings"},
+		{ID: "profiles", Label: "Profiles"},
 		{ID: "quit", Label: "Quit"},
 	}
 }
@@ -60,6 +60,8 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "projects":
 				return m, func() tea.Msg { return triggerProjectsMsg{} }
+			case "profiles":
+				return m, func() tea.Msg { return triggerProfilesMsg{} }
 			}
 		case "q", "ctrl+c":
 			return m, tea.Quit

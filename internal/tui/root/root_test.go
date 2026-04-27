@@ -20,7 +20,7 @@ func newRootWithProfile(t *testing.T, identityFile string) Model {
 			{Name: "test", ServerURL: "http://localhost:8080", IdentityFile: identityFile, Theme: "adaptive"},
 		},
 	}
-	return New(cfg, th)
+	return New(cfg, "", th)
 }
 
 func runRootCmd(cmd tea.Cmd) tea.Msg {
