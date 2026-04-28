@@ -52,6 +52,44 @@ func SSHDir() (string, error) {
 	return filepath.Join(home, ".ssh"), nil
 }
 
+// DiscoverSSHKeys returns the absolute paths of likely SSH private-key files
+// found in the directory returned by sshDirFn.
+// If sshDirFn is nil, SSHDir is used.
+// Public-key files (.pub) and well-known non-key filenames are excluded.
+// Returns nil when the directory cannot be read.
+func DiscoverSSHKeys(sshDirFn func() (string, error)) []string {
+	fn := sshDirFn
+	if fn == nil {
+		fn = SSHDir
+	}
+	dir, err := fn()
+	if err != nil || dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	skip := map[string]bool{
+		"known_hosts":     true,
+		"known_hosts.old": true,
+		"config":          true,
+		"authorized_keys": true,
+	}
+	var keys []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(name, ".pub") || skip[name] {
+			continue
+		}
+		keys = append(keys, filepath.Join(dir, name))
+	}
+	return keys
+}
+
 // DefaultProfile returns a Profile populated with default values.
 // IdentityFile is returned as an expanded absolute path so callers never need
 // to handle "~" expansion themselves.

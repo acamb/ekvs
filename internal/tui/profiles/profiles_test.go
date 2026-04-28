@@ -996,8 +996,7 @@ func TestDiscoverSSHKeys_FiltersPublicKeys(t *testing.T) {
 		}
 	}
 	sshFn := func() (string, error) { return dir, nil }
-	m := Model{sshDirFn: sshFn}
-	keys := m.discoverSSHKeys()
+	keys := tuiconfig.DiscoverSSHKeys(sshFn)
 
 	found := map[string]bool{}
 	for _, k := range keys {
@@ -1015,8 +1014,7 @@ func TestDiscoverSSHKeys_FiltersPublicKeys(t *testing.T) {
 
 func TestDiscoverSSHKeys_ReturnsNilOnError(t *testing.T) {
 	sshFn := func() (string, error) { return "", os.ErrNotExist }
-	m := Model{sshDirFn: sshFn}
-	keys := m.discoverSSHKeys()
+	keys := tuiconfig.DiscoverSSHKeys(sshFn)
 	if keys != nil {
 		t.Errorf("expected nil on error, got %v", keys)
 	}

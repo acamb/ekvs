@@ -437,6 +437,93 @@ func TestDeleteProfile(t *testing.T) {
 	})
 }
 
+// ── DiscoverSSHKeys ────────────────────────────────────────────────────────────
+
+func TestDiscoverSSHKeys(t *testing.T) {
+	// helper: create a fake ~/.ssh directory with the given file names.
+	makeSSHDir := func(t *testing.T, names ...string) string {
+		t.Helper()
+		dir := t.TempDir()
+		for _, n := range names {
+			if err := os.WriteFile(filepath.Join(dir, n), []byte("dummy"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+
+	tests := []struct {
+		name      string
+		files     []string // files to create in the fake SSH dir
+		wantNames []string // base names expected in the result (order preserved)
+	}{
+		{
+			name:      "returns private key files",
+			files:     []string{"id_ed25519", "id_rsa", "id_ecdsa"},
+			wantNames: []string{"id_ecdsa", "id_ed25519", "id_rsa"}, // ReadDir returns alphabetical order
+		},
+		{
+			name:      "skips .pub files",
+			files:     []string{"id_ed25519", "id_ed25519.pub"},
+			wantNames: []string{"id_ed25519"},
+		},
+		{
+			name: "skips well-known non-key files",
+			files: []string{
+				"id_ed25519",
+				"known_hosts",
+				"known_hosts.old",
+				"config",
+				"authorized_keys",
+			},
+			wantNames: []string{"id_ed25519"},
+		},
+		{
+			name:      "empty directory returns nil",
+			files:     nil,
+			wantNames: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := makeSSHDir(t, tc.files...)
+			fn := func() (string, error) { return dir, nil }
+
+			got := config.DiscoverSSHKeys(fn)
+
+			if len(got) != len(tc.wantNames) {
+				t.Fatalf("got %d keys, want %d: %v", len(got), len(tc.wantNames), got)
+			}
+			for i, want := range tc.wantNames {
+				if filepath.Base(got[i]) != want {
+					t.Errorf("[%d] got %q, want base name %q", i, got[i], want)
+				}
+			}
+		})
+	}
+
+	t.Run("nil sshDirFn falls back to SSHDir (no error)", func(t *testing.T) {
+		// We only check that it does not panic and returns a slice (possibly nil).
+		_ = config.DiscoverSSHKeys(nil)
+	})
+
+	t.Run("sshDirFn error returns nil", func(t *testing.T) {
+		fn := func() (string, error) { return "", os.ErrNotExist }
+		if got := config.DiscoverSSHKeys(fn); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("non-existent directory returns nil", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "does-not-exist")
+		fn := func() (string, error) { return dir, nil }
+		if got := config.DiscoverSSHKeys(fn); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+}
+
 // ── CRUD save/load round-trips ────────────────────────────────────────────────
 
 func TestCRUD_RoundTrip(t *testing.T) {

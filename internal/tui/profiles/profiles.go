@@ -2,8 +2,6 @@ package profiles
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -568,7 +566,7 @@ func (m Model) updateReloadPrompt(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) newCreateForm() profileForm {
 	def := tuiconfig.DefaultProfile()
-	discovered := m.discoverSSHKeys()
+	discovered := tuiconfig.DiscoverSSHKeys(m.sshDirFn)
 	identMode := identityModePick
 	if len(discovered) == 0 {
 		identMode = identityModeManual
@@ -594,7 +592,7 @@ func (m Model) newCreateForm() profileForm {
 }
 
 func (m Model) newEditForm(p tuiconfig.Profile) profileForm {
-	discovered := m.discoverSSHKeys()
+	discovered := tuiconfig.DiscoverSSHKeys(m.sshDirFn)
 	identMode := identityModeManual
 	discoveryCursor := 0
 	for i, d := range discovered {
@@ -626,42 +624,6 @@ func (m Model) newEditForm(p tuiconfig.Profile) profileForm {
 		identityManual:  newTextInput("", p.IdentityFile),
 		themeIndex:      themeIdx,
 	}
-}
-
-// discoverSSHKeys returns paths of likely SSH private-key files in the SSH
-// directory. Uses m.sshDirFn (defaults to tuiconfig.SSHDir) so tests can
-// override the directory without touching the real ~/.ssh.
-func (m Model) discoverSSHKeys() []string {
-	fn := m.sshDirFn
-	if fn == nil {
-		fn = tuiconfig.SSHDir
-	}
-	sshDir, err := fn()
-	if err != nil || sshDir == "" {
-		return nil
-	}
-	entries, err := os.ReadDir(sshDir)
-	if err != nil {
-		return nil
-	}
-	skip := map[string]bool{
-		"known_hosts":     true,
-		"known_hosts.old": true,
-		"config":          true,
-		"authorized_keys": true,
-	}
-	var keys []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(name, ".pub") || skip[name] {
-			continue
-		}
-		keys = append(keys, filepath.Join(sshDir, name))
-	}
-	return keys
 }
 
 // View implements tea.Model.

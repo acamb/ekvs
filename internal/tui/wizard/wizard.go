@@ -59,6 +59,14 @@ func (ti textInput) update(msg tea.KeyPressMsg) textInput {
 	return ti
 }
 
+// identityInputMode determines how the identity_file field is filled.
+type identityInputMode int
+
+const (
+	identityModePick   identityInputMode = iota // select from the discovered list
+	identityModeManual                          // type a custom path
+)
+
 type step int
 
 const (
@@ -72,11 +80,19 @@ const (
 // Model is the bubbletea model for the wizard screen.
 // It is exported so the root model can embed it directly.
 type Model struct {
-	step           step
-	name           textInput
-	url            textInput
-	identity       textInput
-	filename       textInput
+	step step
+
+	name     textInput
+	url      textInput
+	filename textInput
+
+	// identity file – two input modes (mirroring profiles.profileForm)
+	sshDirFn        func() (string, error) // nil → config.SSHDir; overridable for tests
+	identMode       identityInputMode
+	discovered      []string
+	discoveryCursor int
+	identityManual  textInput
+
 	wantSave       bool
 	pendingProfile config.Profile // set by finish(), used by saveResultMsg handler
 	err            string
@@ -87,15 +103,47 @@ type Model struct {
 // NewModel creates a new wizard Model with the given theme.
 func NewModel(t theme.Theme) Model {
 	def := config.DefaultProfile()
-	return Model{
-		step:     stepName,
-		name:     newTextInput("e.g. local", ""),
-		url:      newTextInput("", def.ServerURL),
-		identity: newTextInput("", def.IdentityFile),
-		filename: newTextInput("", "ekvs-tui.yaml"),
-		theme:    t,
-		footer:   footer.New(t),
+	discovered := config.DiscoverSSHKeys(nil)
+	identMode := identityModePick
+	if len(discovered) == 0 {
+		identMode = identityModeManual
 	}
+	return Model{
+		step:           stepName,
+		name:           newTextInput("e.g. local", ""),
+		url:            newTextInput("", def.ServerURL),
+		identMode:      identMode,
+		discovered:     discovered,
+		identityManual: newTextInput(def.IdentityFile, ""),
+		filename:       newTextInput("", "ekvs-tui.yaml"),
+		theme:          t,
+		footer:         footer.New(t),
+	}
+}
+
+// WithSSHDirFn replaces the SSH directory discovery function.
+// Intended for testing; the returned Model re-runs discovery with the new function.
+func (m Model) WithSSHDirFn(fn func() (string, error)) Model {
+	m.sshDirFn = fn
+	m.discovered = config.DiscoverSSHKeys(fn)
+	m.discoveryCursor = 0
+	if len(m.discovered) == 0 {
+		m.identMode = identityModeManual
+	} else {
+		m.identMode = identityModePick
+	}
+	return m
+}
+
+// selectedIdentity returns the current value of the identity_file field.
+func (m Model) selectedIdentity() string {
+	if m.identMode == identityModeManual || len(m.discovered) == 0 {
+		return m.identityManual.value
+	}
+	if m.discoveryCursor < len(m.discovered) {
+		return m.discovered[m.discoveryCursor]
+	}
+	return ""
 }
 
 // Init implements tea.Model.
@@ -125,21 +173,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch m.step {
-		case stepName, stepServerURL, stepIdentityFile:
+		case stepName, stepServerURL:
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "enter":
-				var val string
-				switch m.step {
-				case stepName:
-					val = strings.TrimSpace(m.name.value)
-				case stepServerURL:
-					val = strings.TrimSpace(m.url.value)
-				case stepIdentityFile:
-					val = strings.TrimSpace(m.identity.value)
-				}
-				if m.step == stepName && val == "" {
+				if m.step == stepName && strings.TrimSpace(m.name.value) == "" {
 					m.err = "profile name cannot be empty"
 					return m, nil
 				}
@@ -152,10 +191,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.name = m.name.update(msg)
 				case stepServerURL:
 					m.url = m.url.update(msg)
-				case stepIdentityFile:
-					m.identity = m.identity.update(msg)
 				}
 			}
+
+		case stepIdentityFile:
+			return m.updateIdentity(msg)
 
 		case stepConfirmSave:
 			switch msg.String() {
@@ -188,6 +228,61 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateIdentity handles key input for the stepIdentityFile step.
+// Mirrors profiles.updateFormIdentity to provide the same pick/manual UX.
+func (m Model) updateIdentity(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		if m.identMode == identityModeManual && len(m.discovered) > 0 {
+			// Return to pick list instead of going to the previous step.
+			m.identMode = identityModePick
+			return m, nil
+		}
+		m.step = stepServerURL
+	case "m":
+		if m.identMode == identityModePick {
+			m.identMode = identityModeManual
+			return m, nil
+		}
+		// In manual mode 'm' is a regular character.
+		m.identityManual = m.identityManual.update(msg)
+	case "up":
+		if m.identMode == identityModePick && len(m.discovered) > 0 {
+			n := len(m.discovered)
+			m.discoveryCursor = (m.discoveryCursor - 1 + n) % n
+		}
+	case "k":
+		if m.identMode == identityModePick && len(m.discovered) > 0 {
+			n := len(m.discovered)
+			m.discoveryCursor = (m.discoveryCursor - 1 + n) % n
+		} else if m.identMode == identityModeManual {
+			m.identityManual = m.identityManual.update(msg)
+		}
+	case "down":
+		if m.identMode == identityModePick && len(m.discovered) > 0 {
+			n := len(m.discovered)
+			m.discoveryCursor = (m.discoveryCursor + 1) % n
+		}
+	case "j":
+		if m.identMode == identityModePick && len(m.discovered) > 0 {
+			n := len(m.discovered)
+			m.discoveryCursor = (m.discoveryCursor + 1) % n
+		} else if m.identMode == identityModeManual {
+			m.identityManual = m.identityManual.update(msg)
+		}
+	case "enter":
+		m.err = ""
+		m.step = stepConfirmSave
+	default:
+		if m.identMode == identityModeManual {
+			m.identityManual = m.identityManual.update(msg)
+		}
+	}
+	return m, nil
+}
+
 // buildProfile constructs a Profile from raw (possibly empty) input strings,
 // falling back to DefaultProfile values where the user left fields blank.
 func buildProfile(name, url, identity string) config.Profile {
@@ -213,7 +308,7 @@ func buildProfile(name, url, identity string) config.Profile {
 // finish builds the profile and either emits DoneMsg directly (no save)
 // or launches an async goroutine to save the config file first.
 func (m Model) finish() (Model, tea.Cmd) {
-	m.pendingProfile = buildProfile(m.name.value, m.url.value, m.identity.value)
+	m.pendingProfile = buildProfile(m.name.value, m.url.value, m.selectedIdentity())
 
 	if !m.wantSave {
 		profile := m.pendingProfile
@@ -242,7 +337,7 @@ func (m Model) renderSummary() string {
 		fmt.Fprintf(&sb, "Server:  %s\n", m.url.value)
 	}
 	if m.step > stepIdentityFile {
-		fmt.Fprintf(&sb, "Key:     %s\n", m.identity.value)
+		fmt.Fprintf(&sb, "Key:     %s\n", m.selectedIdentity())
 	}
 	return sb.String()
 }
@@ -264,8 +359,26 @@ func (m Model) View() tea.View {
 		sb.WriteString("\nServer URL:\n")
 		sb.WriteString("  " + m.url.view(true) + "\n")
 	case stepIdentityFile:
-		sb.WriteString("\nSSH identity file path:\n")
-		sb.WriteString("  " + m.identity.view(true) + "\n")
+		sb.WriteString("\nSSH identity file:\n")
+		if m.identMode == identityModePick {
+			if len(m.discovered) == 0 {
+				sb.WriteString(t.MenuItemStyle().Render("  (no keys discovered — press m to enter path manually)"))
+				sb.WriteString("\n")
+			} else {
+				for i, k := range m.discovered {
+					if i == m.discoveryCursor {
+						sb.WriteString(t.SelectedMenuItemStyle().Render("> " + k))
+					} else {
+						sb.WriteString(t.MenuItemStyle().Render("  " + k))
+					}
+					sb.WriteString("\n")
+				}
+				sb.WriteString(t.MenuItemStyle().Render("  m — enter a custom path"))
+				sb.WriteString("\n")
+			}
+		} else {
+			sb.WriteString("  " + m.identityManual.view(true) + "\n")
+		}
 	case stepConfirmSave:
 		sb.WriteString("\nSave configuration to file? [y/N] ")
 	case stepFilename:
@@ -279,6 +392,15 @@ func (m Model) View() tea.View {
 	}
 
 	sb.WriteString("\n\n")
-	sb.WriteString(m.footer.View("Enter confirm • Ctrl+C cancel"))
+	switch m.step {
+	case stepIdentityFile:
+		if m.identMode == identityModePick {
+			sb.WriteString(m.footer.View("↑/↓ select key • m manual path • Enter confirm • Esc back"))
+		} else {
+			sb.WriteString(m.footer.View("Enter confirm • Esc back • Ctrl+C quit"))
+		}
+	default:
+		sb.WriteString(m.footer.View("Enter confirm • Ctrl+C cancel"))
+	}
 	return tea.NewView(sb.String())
 }
