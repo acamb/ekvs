@@ -1,0 +1,60 @@
+package cli
+
+import (
+	"errors"
+	"io"
+	"os"
+
+	"github.com/spf13/cobra"
+)
+
+var (
+	flagServer   string
+	flagIdentity string
+)
+
+var rootCmd = &cobra.Command{
+	Use:   "ekvs",
+	Short: "EKVS – Easy Key-Value Store CLI",
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&flagServer, "server", "", "server address (host:port) [$EKVS_SERVER]")
+	rootCmd.PersistentFlags().StringVar(&flagIdentity, "identity", "", "path to OpenSSH private key [$EKVS_IDENTITY]")
+
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if flagServer == "" {
+			flagServer = os.Getenv("EKVS_SERVER")
+		}
+		if flagIdentity == "" {
+			flagIdentity = os.Getenv("EKVS_IDENTITY")
+		}
+		if flagServer == "" {
+			return errors.New("required flag --server (or $EKVS_SERVER) not set")
+		}
+		if flagIdentity == "" {
+			return errors.New("required flag --identity (or $EKVS_IDENTITY) not set")
+		}
+		return nil
+	}
+
+	rootCmd.AddCommand(exportCmd)
+	rootCmd.AddCommand(execCmd)
+}
+
+// Execute runs the root command with os.Args.
+func Execute() error {
+	return rootCmd.Execute()
+}
+
+// ExecuteWithArgs runs the root command with explicit args and output writers.
+// Primarily used in tests.
+func ExecuteWithArgs(args []string, out, errOut io.Writer) error {
+	// Reset flag values before each run so tests are independent.
+	flagServer = ""
+	flagIdentity = ""
+	rootCmd.SetOut(out)
+	rootCmd.SetErr(errOut)
+	rootCmd.SetArgs(args)
+	return rootCmd.Execute()
+}
