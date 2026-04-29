@@ -1,4 +1,4 @@
-# EKVS Roadmap
+# EKVS (Easy Key Value Store) Roadmap
 
 > **Testing policy**
 > - **Unit tests**: every milestone must ship with `*_test.go` files covering the new packages, written with the Go standard `testing` package (table-driven style).
