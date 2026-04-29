@@ -69,3 +69,25 @@ func TestExecNoArgs(t *testing.T) {
 		t.Fatal("expected error when exec called with no args")
 	}
 }
+
+func TestPassphraseFlagBeatsEnv(t *testing.T) {
+	t.Setenv("EKVS_SERVER", "localhost:8080")
+	t.Setenv("EKVS_IDENTITY", "/tmp/key")
+	t.Setenv("EKVS_PASSPHRASE", "env-passphrase")
+	// --passphrase flag is accepted; command still fails with "not yet implemented".
+	err := executeArgs(t, []string{"--passphrase", "flag-passphrase", "export", "myproject"})
+	if err == nil || err.Error() == "required flag --server (or $EKVS_SERVER) not set" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPassphraseEnvFallback(t *testing.T) {
+	t.Setenv("EKVS_SERVER", "localhost:8080")
+	t.Setenv("EKVS_IDENTITY", "/tmp/key")
+	t.Setenv("EKVS_PASSPHRASE", "env-passphrase")
+	// No --passphrase flag; env var must be accepted without error.
+	err := executeArgs(t, []string{"export", "myproject"})
+	if err == nil || err.Error() == "required flag --server (or $EKVS_SERVER) not set" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
