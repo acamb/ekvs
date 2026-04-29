@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	flagServer   string
-	flagIdentity string
+	flagServer     string
+	flagIdentity   string
+	flagPassphrase string
 )
 
 var rootCmd = &cobra.Command{
@@ -21,6 +22,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().StringVar(&flagServer, "server", "", "server address (host:port) [$EKVS_SERVER]")
 	rootCmd.PersistentFlags().StringVar(&flagIdentity, "identity", "", "path to OpenSSH private key [$EKVS_IDENTITY]")
+	rootCmd.PersistentFlags().StringVar(&flagPassphrase, "passphrase", "", "SSH key passphrase [$EKVS_PASSPHRASE]")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if flagServer == "" {
@@ -28,6 +30,9 @@ func init() {
 		}
 		if flagIdentity == "" {
 			flagIdentity = os.Getenv("EKVS_IDENTITY")
+		}
+		if flagPassphrase == "" {
+			flagPassphrase = os.Getenv("EKVS_PASSPHRASE")
 		}
 		if flagServer == "" {
 			return errors.New("required flag --server (or $EKVS_SERVER) not set")
@@ -53,6 +58,7 @@ func ExecuteWithArgs(args []string, out, errOut io.Writer) error {
 	// Reset flag values before each run so tests are independent.
 	flagServer = ""
 	flagIdentity = ""
+	flagPassphrase = ""
 	rootCmd.SetOut(out)
 	rootCmd.SetErr(errOut)
 	rootCmd.SetArgs(args)
