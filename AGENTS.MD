@@ -13,3 +13,5 @@ Each task in the roadmap will be implemented one by one creating a new directory
 * validation.md - describes how to validate the implementation of the feature, how to know if it's working as expected and how to test it.
 
 The project is in english.
+
+IMPORTANT: Avoid excessive explainations it the responses: be concise and to the point. If I want clarification or more details, I will ask for it explicitly. Always ask for clarification if you are not sure about something, instead of making assumptions.
