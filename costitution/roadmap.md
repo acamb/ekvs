@@ -78,14 +78,11 @@
 20. **cli_encryption**
     Integrate encryption primitives into the CLI: decrypt values after receiving.
 
-21. **export_secrets_to_stdin**
-    Commands: `print projectName [--secrets comma_separated_list]`.
+21. **cli_export**
+    Command: `ekvs export projectName [keyName]`. Decrypts and prints secrets to stdout in plain text (`KEY=value` format, one per line). If `keyName` is omitted, all secrets of the project are exported; if specified, only that secret is printed.
 
-22. **export_secrets_to_env**
-    Commands: `export projectName [--secrets comma_separated_list]`.
-
-23. **exec program with env**
-    Commands: `exec projectName [--secrets comma_separated_list] -- program_to_run`.
+22. **cli_exec**
+    Command: `ekvs exec projectName [keyName] -- programToRun`. Injects secrets as environment variables into the subprocess. If `keyName` is omitted, all secrets are injected.
 
 ---
 
