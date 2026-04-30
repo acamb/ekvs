@@ -3,15 +3,22 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
+
+var flagOutput string
 
 var exportCmd = &cobra.Command{
 	Use:   "export <projectName> [keyName]",
 	Short: "Decrypt and print secrets to stdout",
 	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if flagOutput != "" && len(args) != 2 {
+			return fmt.Errorf("--output requires a keyName argument")
+		}
+
 		signer, _, fingerprint, err := LoadIdentity(flagIdentity, flagPassphrase)
 		if err != nil {
 			return fmt.Errorf("load identity: %w", err)
@@ -38,6 +45,12 @@ var exportCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("decrypt %q: %w", entry.Key, err)
 			}
+			if flagOutput != "" {
+				if err := os.WriteFile(flagOutput, []byte(plaintext), 0600); err != nil {
+					return fmt.Errorf("write output file: %w", err)
+				}
+				return nil
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", entry.Key, plaintext)
 			return nil
 		}
@@ -58,4 +71,8 @@ var exportCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func init() {
+	exportCmd.Flags().StringVar(&flagOutput, "output", "", "write decrypted value to file path (single key only)")
 }

@@ -162,6 +162,138 @@ func TestExport_SingleSecret_KeyNotFound(t *testing.T) {
 	}
 }
 
+// ── --output flag ─────────────────────────────────────────────────────────────
+
+// runExportToFile invokes "ekvs export ... --output <outPath>" and returns the error.
+func runExportToFile(t *testing.T, addr, identity, outPath string, extraArgs ...string) error {
+	t.Helper()
+	cmdArgs := append([]string{"--server", addr, "--identity", identity, "export"}, extraArgs...)
+	cmdArgs = append(cmdArgs, "--output", outPath)
+	return cli.ExecuteWithArgs(cmdArgs, &bytes.Buffer{}, &bytes.Buffer{})
+}
+
+func TestExport_OutputFile_HappyPath(t *testing.T) {
+	signer := loadTestEd25519(t)
+	blob := encryptForSigner(t, signer, "hunter2")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"key": "DB_PASS", "value": blob}) //nolint:errcheck
+	}))
+	defer ts.Close()
+
+	out := filepath.Join(t.TempDir(), "secret.txt")
+	err := runExportToFile(t, serverAddr(ts), exportFixturePath("ed25519"), out, "proj", "DB_PASS")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	raw, readErr := os.ReadFile(out)
+	if readErr != nil {
+		t.Fatalf("read output file: %v", readErr)
+	}
+	if string(raw) != "hunter2" {
+		t.Errorf("file content = %q, want %q", string(raw), "hunter2")
+	}
+}
+
+func TestExport_OutputFile_Overwrite(t *testing.T) {
+	signer := loadTestEd25519(t)
+	blob := encryptForSigner(t, signer, "newvalue")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"key": "KEY", "value": blob}) //nolint:errcheck
+	}))
+	defer ts.Close()
+
+	out := filepath.Join(t.TempDir(), "secret.txt")
+	// Pre-create file with different content.
+	if err := os.WriteFile(out, []byte("oldvalue"), 0600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	if err := runExportToFile(t, serverAddr(ts), exportFixturePath("ed25519"), out, "proj", "KEY"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	raw, _ := os.ReadFile(out)
+	if string(raw) != "newvalue" {
+		t.Errorf("file content = %q, want %q", string(raw), "newvalue")
+	}
+}
+
+func TestExport_OutputFile_MissingKeyName(t *testing.T) {
+	// Server should never be hit — guard fires first.
+	called := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	out := filepath.Join(t.TempDir(), "secret.txt")
+	err := runExportToFile(t, serverAddr(ts), exportFixturePath("ed25519"), out, "proj") // no keyName
+	if err == nil {
+		t.Fatal("expected error for --output without keyName")
+	}
+	if !strings.Contains(err.Error(), "--output requires a keyName argument") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "--output requires a keyName argument")
+	}
+	if called {
+		t.Error("server was called but should not have been")
+	}
+}
+
+func TestExport_OutputFile_DirectoryNotFound(t *testing.T) {
+	signer := loadTestEd25519(t)
+	blob := encryptForSigner(t, signer, "value")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"key": "K", "value": blob}) //nolint:errcheck
+	}))
+	defer ts.Close()
+
+	out := filepath.Join(t.TempDir(), "nonexistent", "secret.txt")
+	err := runExportToFile(t, serverAddr(ts), exportFixturePath("ed25519"), out, "proj", "K")
+	if err == nil {
+		t.Fatal("expected error for non-existent directory")
+	}
+	if !strings.Contains(err.Error(), "write output file") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "write output file")
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Error("output file should not have been created")
+	}
+}
+
+func TestExport_OutputFile_DecryptFailure(t *testing.T) {
+	// Encrypt with a key that does NOT match the test fixture → decrypt will fail.
+	signer := loadTestEd25519(t)
+	key, err := encryption.DeriveKey(signer)
+	if err != nil {
+		t.Fatalf("DeriveKey: %v", err)
+	}
+	// Corrupt the blob so AES-GCM authentication fails.
+	blob, err := encryption.Encrypt(key, []byte("secret"))
+	if err != nil {
+		t.Fatalf("Encrypt: %v", err)
+	}
+	// Flip a byte in the base64 to corrupt the ciphertext.
+	corrupted := []byte(blob)
+	corrupted[len(corrupted)-1] ^= 0xFF
+	corruptedBlob := string(corrupted)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"key": "K", "value": corruptedBlob}) //nolint:errcheck
+	}))
+	defer ts.Close()
+
+	out := filepath.Join(t.TempDir(), "secret.txt")
+	if err := runExportToFile(t, serverAddr(ts), exportFixturePath("ed25519"), out, "proj", "K"); err == nil {
+		t.Fatal("expected decrypt error")
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Error("output file should not have been created on decrypt failure")
+	}
+}
+
 // ── encryption round-trip ─────────────────────────────────────────────────────
 
 func TestExport_EncryptionRoundTrip(t *testing.T) {

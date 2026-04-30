@@ -67,6 +67,7 @@ func ExecuteWithArgs(args []string, out, errOut io.Writer) error {
 	flagServer = ""
 	flagIdentity = ""
 	flagPassphrase = ""
+	flagOutput = ""
 	rootCmd.SetOut(out)
 	rootCmd.SetErr(errOut)
 	rootCmd.SetArgs(args)
