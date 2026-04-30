@@ -91,13 +91,7 @@
 ### Phase 4 — Integration Testing
 
 24. **integration_test_setup**
-    Create `tests/integration/` directory with `docker-compose.yml` (server container + client containers), `Makefile` target `integration-test`, and `README.md` runbook skeleton.
-
-25. **integration_test_server_cli**
-    Docker-based semi-manual integration scenarios covering server ↔ CLI communication: key registration, project CRUD, secret set/get/list/delete, encryption round-trip verification.
-
-26. **integration_test_server_tui**
-    Docker-based semi-manual integration scenarios covering server ↔ TUI communication: same flows as CLI scenarios but driven through the TUI interface.
+    Create composes files for manual testing. Server, cli and TUI. The goal is to have a pre-configured environment that can be easily started to manual test cli/tui communication and various scenarios.
 
 27. **tui_e2e_tests**
     End-to-end tests for TUI screens using [`teatest`](https://github.com/charmbracelet/x/tree/main/exp/teatest) (the official Bubble Tea v2 test harness). Each TUI screen (`projects`, `secrets`, `profiles`, `auth`, `wizard`, `mainModel`) gets a `*_e2e_test.go` file that drives the model via simulated key presses and asserts on the rendered output. Covers happy paths and error paths (e.g. spinner appears on load, modal appears on error, footer hints match the current mode). The `teatest` package is added to `go.mod` as a test-only dependency.
