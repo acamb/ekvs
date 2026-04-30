@@ -24,6 +24,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagIdentity, "identity", "", "path to OpenSSH private key [$EKVS_IDENTITY]")
 	rootCmd.PersistentFlags().StringVar(&flagPassphrase, "passphrase", "", "SSH key passphrase [$EKVS_PASSPHRASE]")
 
+	// PersistentPreRunE performs two actions before every sub-command:
+	//   1. LoadIdentity: resolves the SSH identity path (flag or env-var).
+	//      The actual key is loaded lazily by each command that needs it.
+	//   2. Encryption session: NewSession(signer) is NOT initialised here.
+	//      Each command that needs to decrypt secret values must call
+	//      NewSession after loading the identity via LoadIdentity.
+	//      The first consumers of this pattern are cli_export (export.go)
+	//      and cli_exec (exec.go).
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if flagServer == "" {
 			flagServer = os.Getenv("EKVS_SERVER")
