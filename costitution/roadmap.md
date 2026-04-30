@@ -84,6 +84,8 @@
 22. **cli_exec**
     Command: `ekvs exec projectName [keyName] -- programToRun`. Injects secrets as environment variables into the subprocess. If `keyName` is omitted, all secrets are injected.
 
+23. **cli_export_file**
+    Update export command to export a single secret to a file `ekvs export projectName keyName --output /path/to/file`. The file contains only the decrypted value (no `KEY=` prefix).
 ---
 
 ### Phase 4 — Integration Testing
