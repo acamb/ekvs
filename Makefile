@@ -1,7 +1,7 @@
 BINARY_DIR := bin
 CMDS       := server tui cli
 
-.PHONY: build test integration-test lint clean
+.PHONY: build test integration-test integration-test-passphrase integration-test-down lint clean
 
 ## build: compile all binaries into ./bin/
 build:
@@ -15,9 +15,17 @@ build:
 test:
 	go test ./... -race -count=1
 
-## integration-test: run semi-manual integration tests via Docker Compose
+## integration-test: start nopass scenario in background (server + cli + tui, no passphrase)
 integration-test:
-	cd tests/integration && docker compose up --abort-on-container-exit
+	cd tests/integration && docker compose -f docker-compose.nopass.yml up --build -d
+
+## integration-test-passphrase: start passphrase scenario in background (server + cli + tui, passphrase=changeme)
+integration-test-passphrase:
+	cd tests/integration && docker compose -f docker-compose.passphrase.yml up --build -d
+
+## integration-test-down: stop and remove all integration containers
+integration-test-down:
+	cd tests/integration && docker compose -f docker-compose.nopass.yml down 2>nul & docker compose -f docker-compose.passphrase.yml down 2>nul & exit 0
 
 ## lint: run static analysis
 lint:

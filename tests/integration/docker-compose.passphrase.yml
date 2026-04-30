@@ -1,0 +1,38 @@
+services:
+  server:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      target: server-passphrase
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  cli:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      target: cli-passphrase
+    depends_on:
+      server:
+        condition: service_healthy
+    command: sleep infinity
+    stdin_open: true
+    tty: true
+
+  tui:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      target: tui-passphrase
+    depends_on:
+      server:
+        condition: service_healthy
+    command: sleep infinity
+    stdin_open: true
+    tty: true
+
