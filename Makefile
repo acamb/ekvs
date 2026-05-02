@@ -11,6 +11,10 @@ build:
 		go build -o $(BINARY_DIR)/$$cmd ./cmd/$$cmd; \
 	done
 
+build-tui-win:
+	@mkdir -p $(BINARY_DIR)
+	echo "Building tui for Windows..."; \
+	GOOS=windows GOARCH=amd64 go build -o $(BINARY_DIR)/tui.exe ./cmd/tui;
 ## test: run all unit tests with race detector
 test:
 	go test ./... -race -count=1
