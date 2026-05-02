@@ -13,8 +13,27 @@ build:
 
 build-tui-win:
 	@mkdir -p $(BINARY_DIR)
-	echo "Building tui for Windows..."; \
-	GOOS=windows GOARCH=amd64 go build -o $(BINARY_DIR)/tui.exe ./cmd/tui;
+	@echo "Building tui for Windows...";
+	@GOOS=windows GOARCH=amd64 go build -o $(BINARY_DIR)/tui.exe ./cmd/tui;
+
+build-static:
+	@mkdir -p $(BINARY_DIR)
+	@for cmd in server cli; do \
+		echo "Building static $$cmd..."; \
+		CGO_ENABLED=0 go build -o $(BINARY_DIR)/$$cmd-static ./cmd/$$cmd; \
+	done
+
+release: clean build build-tui-win build-static
+
+docker-release: clean build-static
+	docker build -t ekvs:latest -f Dockerfile .
+
+docker-publish: docker-release
+	docker tag ekvs:latest acamb23/ekvs:latest
+	docker push acamb23/ekvs:latest
+	docker tag ekvs:latest acamb23/ekvs:$(cat VERSION)
+	docker push acamb23/ekvs:$(cat VERSION)
+
 ## test: run all unit tests with race detector
 test:
 	go test ./... -race -count=1
