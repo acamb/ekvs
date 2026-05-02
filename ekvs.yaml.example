@@ -3,7 +3,7 @@
 # Environment variables override values in this file:
 #   EKVS_SERVER_ADDR, EKVS_STORAGE_PATH, EKVS_KEYS_DIR, EKVS_LOG_LEVEL
 
-server_addr:  "127.0.0.1:8080"
+server_addr:  "0.0.0.0:8080"
 storage_path: "./data"
 keys_dir:     "./data/.keys"
 log_level:    "info"

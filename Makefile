@@ -8,7 +8,7 @@ build:
 	@mkdir -p $(BINARY_DIR)
 	@for cmd in $(CMDS); do \
 		echo "Building $$cmd..."; \
-		go build -o $(BINARY_DIR)/$$cmd ./cmd/$$cmd; \
+		GOOS=linux GOARCH=amd64 go build -o $(BINARY_DIR)/$$cmd ./cmd/$$cmd; \
 	done
 
 build-tui-win:
@@ -20,7 +20,7 @@ build-static:
 	@mkdir -p $(BINARY_DIR)
 	@for cmd in server cli; do \
 		echo "Building static $$cmd..."; \
-		CGO_ENABLED=0 go build -o $(BINARY_DIR)/$$cmd-static ./cmd/$$cmd; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(BINARY_DIR)/$$cmd-static ./cmd/$$cmd; \
 	done
 
 release: clean build build-tui-win build-static
