@@ -32,7 +32,8 @@ Using docker run:
 ```bash
 docker run -d \
     -p 8080:8080 \
-    -v /path/to/storage:/data \
+    -v /path/to/storage:/ekvs/data \
+    -v /path/to/config.yaml:/ekvs/ekvs.yaml \
     --name ekvs-server \
     acamb23/ekvs:latest
 ```
@@ -44,7 +45,8 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /path/to/storage:/data
+      - ./data:/ekvs/data
+      - ./ekvs.yaml:/ekvs/ekvs.yaml
 ```
 
 ### Populate the store with the TUI Client
