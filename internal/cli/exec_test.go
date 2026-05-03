@@ -354,7 +354,7 @@ func TestExec_MissingDoubleDash(t *testing.T) {
 	defer ts.Close()
 
 	// "proj" + "env" without "--" → ArgsLenAtDash returns -1 → error.
-	err := runExec(t, serverAddr(ts), exportFixturePath("ed25519"), "proj", "env")
+	err := runExec(t, serverAddr(ts), exportFixturePath("ed25519"), "exec", "proj", "env")
 	if err == nil {
 		t.Fatal("expected error for missing -- separator")
 	}
