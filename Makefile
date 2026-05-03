@@ -1,6 +1,6 @@
 BINARY_DIR := bin
 CMDS       := server tui cli
-VERSION := $(shell cat version)
+VERSION := $(shell cat VERSION)
 
 .PHONY: build test integration-test integration-test-passphrase integration-test-down lint clean
 
