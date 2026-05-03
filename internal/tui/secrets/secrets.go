@@ -403,6 +403,19 @@ func (m Model) updateAdd(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.activeField = 0
 			return m, m.setSecretCmd(key, value)
 		}
+	case "ctrl+v":
+		if initErr := clipboard.Init(); initErr != nil {
+			m.err = fmt.Errorf("clipboard unavailable: %w", initErr)
+			return m, nil
+		}
+		paste := clipboard.Read(clipboard.FmtText)
+		if len(paste) != 0 {
+			if m.activeField == 0 {
+				m.inputKey += string(paste)
+			} else {
+				m.inputValue += string(paste)
+			}
+		}
 	case "backspace":
 		if m.activeField == 0 {
 			if len(m.inputKey) > 0 {
@@ -450,6 +463,19 @@ func (m Model) updateEdit(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if len(m.inputValue) > 0 {
 			r := []rune(m.inputValue)
 			m.inputValue = string(r[:len(r)-1])
+		}
+	case "ctrl+v":
+		if initErr := clipboard.Init(); initErr != nil {
+			m.err = fmt.Errorf("clipboard unavailable: %w", initErr)
+			return m, nil
+		}
+		paste := clipboard.Read(clipboard.FmtText)
+		if len(paste) != 0 {
+			if m.activeField == 0 {
+				m.inputKey += string(paste)
+			} else {
+				m.inputValue += string(paste)
+			}
 		}
 	default:
 		if text := msg.Key().Text; text != "" {
@@ -591,12 +617,12 @@ func (m Model) View() tea.View {
 		hints = fmt.Sprintf("Search: %s█  Enter/Esc confirm • Esc clear", m.searchQuery)
 	case modeAdd:
 		if m.activeField == 0 {
-			hints = "Tab/Enter next field • Esc cancel"
+			hints = "Tab/Enter next field • Esc cancel • Ctrl+V paste"
 		} else {
-			hints = "Enter confirm • Esc cancel"
+			hints = "Enter confirm • Esc cancel • Ctrl+V paste"
 		}
 	case modeEdit:
-		hints = "Enter confirm • Esc cancel"
+		hints = "Enter confirm • Esc cancel • Ctrl+V paste"
 	case modeDelete:
 		hints = "y confirm • any key cancel"
 	}
