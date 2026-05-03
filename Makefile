@@ -1,5 +1,6 @@
 BINARY_DIR := bin
 CMDS       := server tui cli
+VERSION := $(shell cat version)
 
 .PHONY: build test integration-test integration-test-passphrase integration-test-down lint clean
 
@@ -31,8 +32,8 @@ docker-release: clean build-static
 docker-publish: docker-release
 	docker tag ekvs:latest acamb23/ekvs:latest
 	docker push acamb23/ekvs:latest
-	docker tag ekvs:latest acamb23/ekvs:$(cat VERSION)
-	docker push acamb23/ekvs:$(cat VERSION)
+	docker tag ekvs:latest acamb23/ekvs:$(VERSION)
+	docker push acamb23/ekvs:$(VERSION)
 
 ## test: run all unit tests with race detector
 test:

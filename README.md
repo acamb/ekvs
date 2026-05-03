@@ -1,4 +1,5 @@
 # EKVS - Easy Key Value Store
+![Test Status](https://github.com/acamb/ekvs/actions/workflows/makefile.yml/badge.svg)
 
 This project aims to provide a simple way to store and inject secrets into applications and containers, the principal use case
 is injecting secrets into docker compose or starting applications with an environment populated with secrets fetched from EKVS.
@@ -9,6 +10,11 @@ It consists of 3 main components:
  * server, a REST API server that handles authentication, project and secret storage.
  * tui, a terminal-based interactive client built with Bubble Tea to manage secrets.
  * cli, a read-only command-line client to fetch, decrypt and print/export secrets to an environment.
+
+## AI Warning
+This project is built with the help of AI tools, following the spec-driven design paradigm.
+This is not vibe coding, all the generated code was reviewed (and modified when necessary), but you may not be confortable with this approach.
+The project is used in production on some of my personal projects.
 
 ## Features
 
@@ -45,9 +51,11 @@ services:
 The TUI client can be used to create projects and secrets in an interactive way.
 "Projects" are namespaces for secrets, and "Secrets" are key-value pairs stored encrypted in the server.
 A SSH key pair is a user, so you need to use the same key on the TUI and CLI to access the same projects and secrets.
+On the first run the TUI will ask you to create a profile pointing to the server and using your private key for authentication.
+
 
 ### Retrieving Secrets with the CLI and launching Applications
-The CLI client can be used to fetch secrets and launch applications with those secrets in the environment.
+The CLI can be used to fetch secrets and launch applications with those secrets in the environment.
 ```bash
 # Fetch secrets for a project and print them in KEY=VALUE format
 cli --server http://localhost:8080 --identity /path/to/private/key print project_name
