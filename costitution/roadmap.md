@@ -95,3 +95,9 @@
 
 27. **tui_e2e_tests**
     End-to-end tests for TUI screens using [`teatest`](https://github.com/charmbracelet/x/tree/main/exp/teatest) (the official Bubble Tea v2 test harness). Each TUI screen (`projects`, `secrets`, `profiles`, `auth`, `wizard`, `mainModel`) gets a `*_e2e_test.go` file that drives the model via simulated key presses and asserts on the rendered output. Covers happy paths and error paths (e.g. spinner appears on load, modal appears on error, footer hints match the current mode). The `teatest` package is added to `go.mod` as a test-only dependency.
+
+### Phase 5 - User experience polish
+
+28. **cli_exec_file**
+   Add support to `cli exec` to read a `.ekvs` containing identity path, server, project and command to run. This will simplify a docker entrypoint use case specifying only `["cli", "exec"]`.
+
