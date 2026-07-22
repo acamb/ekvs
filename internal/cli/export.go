@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -29,7 +30,12 @@ var exportCmd = &cobra.Command{
 			return fmt.Errorf("create session: %w", err)
 		}
 
-		client := NewClient("http://" + flagServer)
+		serverUrl := flagServer
+		if !strings.Contains(flagServer, "://") {
+			serverUrl = "http://" + serverUrl
+		}
+		client := NewClient(serverUrl)
+
 		project := args[0]
 
 		if len(args) == 2 {

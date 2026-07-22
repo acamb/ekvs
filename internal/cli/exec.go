@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -35,7 +36,11 @@ var execCmd = &cobra.Command{
 			return fmt.Errorf("create session: %w", err)
 		}
 
-		client := NewClient("http://" + flagServer)
+		serverUrl := flagServer
+		if !strings.Contains(flagServer, "://") {
+			serverUrl = "http://" + serverUrl
+		}
+		client := NewClient(serverUrl)
 		project := toolArgs[0]
 
 		var pairs []string
