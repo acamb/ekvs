@@ -847,3 +847,158 @@ func TestSecretsModel_SearchFooterHint(t *testing.T) {
 		t.Errorf("footer should show 'Search:' hint in modeSearch, got:\n%s", view)
 	}
 }
+
+// ── Copy (OSC52) ────────────────────────────────────────────────────────────────
+
+func TestSecretsModel_CopyReturnsCmd(t *testing.T) {
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "supersecret")
+	th, _ := theme.NewTheme("adaptive")
+	fc := &fakeClient{}
+	m := newWithClient("proj", fc, sess, th)
+	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: blob}})
+
+	// Pressing "c" on the selected entry must produce a (batch) command and
+	// must not set an error, regardless of clipboard backend availability.
+	next, cmd := m.Update(keyMsg("c"))
+	mm := next.(Model)
+	if cmd == nil {
+		t.Fatal("copy should return a non-nil cmd")
+	}
+	if mm.err != nil {
+		t.Errorf("copy should not set an error, got %v", mm.err)
+	}
+	if mm.mode != modeList {
+		t.Errorf("copy should stay in modeList, got %v", mm.mode)
+	}
+}
+
+func TestSecretsModel_CopyDecryptErrorSurfaced(t *testing.T) {
+	// Unauthenticated session → Decrypt fails → error surfaced, no cmd.
+	th, _ := theme.NewTheme("adaptive")
+	unauthSess := &session.Session{}
+	fc := &fakeClient{}
+	m := newWithClient("proj", fc, unauthSess, th)
+	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: "notablob"}})
+
+	next, cmd := m.Update(keyMsg("c"))
+	mm := next.(Model)
+	if cmd != nil {
+		t.Error("copy with decrypt failure should not return a cmd")
+	}
+	if mm.err == nil {
+		t.Error("copy with decrypt failure should surface an error")
+	}
+}
+
+// ── Bracketed paste (tea.PasteMsg) ──────────────────────────────────────────────
+
+func sendPaste(m Model, content string) Model {
+	next, _ := m.Update(tea.PasteMsg{Content: content})
+	mm, _ := next.(Model)
+	return mm
+}
+
+func TestSecretsModel_PasteIntoAddKeyField(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, nil)
+
+	m, _ = sendKey(m, "n") // modeAdd, activeField 0 (key)
+	m = sendPaste(m, "pasted-key")
+
+	if m.inputKey != "pasted-key" {
+		t.Errorf("want inputKey=pasted-key, got %q", m.inputKey)
+	}
+}
+
+func TestSecretsModel_PasteIntoAddValueField(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, nil)
+
+	m, _ = sendKey(m, "n") // modeAdd, activeField 0 (key)
+	for _, ch := range "k" {
+		m, _ = m.UpdateTyped(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+	}
+	m, _ = sendKey(m, "tab") // advance to value field
+	m = sendPaste(m, "pasted-value")
+
+	if m.inputValue != "pasted-value" {
+		t.Errorf("want inputValue=pasted-value, got %q", m.inputValue)
+	}
+}
+
+func TestSecretsModel_PasteIntoEditValueField(t *testing.T) {
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "orig")
+	th, _ := theme.NewTheme("adaptive")
+	fc := &fakeClient{}
+	m := newWithClient("proj", fc, sess, th)
+	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: blob}})
+
+	m, _ = sendKey(m, "e") // modeEdit, inputValue="orig"
+	m = sendPaste(m, "-added")
+
+	if m.inputValue != "orig-added" {
+		t.Errorf("want inputValue=orig-added, got %q", m.inputValue)
+	}
+}
+
+func TestSecretsModel_PasteIntoSearchQuery(t *testing.T) {
+	m := buildSearchModel(t)
+	m, _ = sendKey(m, "/") // modeSearch
+	m = sendPaste(m, "ban")
+
+	if m.searchQuery != "ban" {
+		t.Errorf("want searchQuery=ban, got %q", m.searchQuery)
+	}
+	filtered := m.filteredSecrets()
+	if len(filtered) != 1 || filtered[0].Key != "banana" {
+		t.Errorf("paste should filter to 'banana', got %v", filtered)
+	}
+}
+
+func TestSecretsModel_PasteFlattensMultilineKey(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, nil)
+
+	m, _ = sendKey(m, "n") // modeAdd, key field
+	m = sendPaste(m, "line1\r\nline2\n")
+
+	if m.inputKey != "line1line2" {
+		t.Errorf("multi-line paste into key should be flattened, got %q", m.inputKey)
+	}
+}
+
+func TestSecretsModel_PasteKeepsMultilineValue(t *testing.T) {
+	m := newTestModel(t, nil)
+	m = applyFetched(m, nil)
+
+	m, _ = sendKey(m, "n")
+	for _, ch := range "k" {
+		m, _ = m.UpdateTyped(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+	}
+	m, _ = sendKey(m, "tab") // value field
+	m = sendPaste(m, "line1\nline2")
+
+	if m.inputValue != "line1\nline2" {
+		t.Errorf("value field should keep newlines, got %q", m.inputValue)
+	}
+}
+
+func TestSecretsModel_PasteIgnoredInListMode(t *testing.T) {
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "v")
+	m := newTestModel(t, nil)
+	m = applyFetched(m, []client.SecretEntry{{Key: "k", Value: blob}})
+
+	// modeList: paste must not alter any input field.
+	m = sendPaste(m, "junk")
+
+	if m.inputKey != "" || m.inputValue != "" || m.searchQuery != "" {
+		t.Errorf("paste in modeList should be a no-op, got key=%q value=%q search=%q",
+			m.inputKey, m.inputValue, m.searchQuery)
+	}
+	if m.mode != modeList {
+		t.Errorf("mode should stay modeList, got %v", m.mode)
+	}
+}

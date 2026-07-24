@@ -219,6 +219,53 @@ func (m Model) selectedEntry() (client.SecretEntry, bool) {
 	return items[m.cursor], true
 }
 
+// ── paste helper ──────────────────────────────────────────────────────────────
+
+// insertPaste appends pasted/clipboard text into the currently active input,
+// depending on the current mode and active field. Multi-line content is
+// flattened for single-line fields (key, search); the value field keeps it raw.
+func (m *Model) insertPaste(content string) {
+	switch m.mode {
+	case modeAdd:
+		if m.activeField == 0 {
+			m.inputKey += sanitizeSingleLine(content)
+		} else {
+			m.inputValue += content
+		}
+	case modeEdit:
+		m.inputValue += content
+	case modeSearch:
+		m.searchQuery += sanitizeSingleLine(content)
+		m.cursor = 0
+		m.page = 0
+		m.table = m.buildTable()
+	}
+}
+
+// sanitizeSingleLine strips carriage returns and newlines so pasted multi-line
+// content does not break single-line fields (key, search query).
+func sanitizeSingleLine(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
+}
+
+// copyToClipboardCmd copies text to the system clipboard. The primary path is
+// OSC52 (tea.SetClipboard): the terminal writes to the system clipboard, which
+// works under Wayland, X11 and over SSH without any external dependency. As a
+// best-effort fallback for terminals without OSC52 support, it also writes via
+// the X11 clipboard library. That fallback is silent — the OSC52 path is the
+// one expected to succeed, so an X11 failure (e.g. pure Wayland with no
+// XWayland, or CGO_ENABLED=0) must not surface an error. clipboard.Init()
+// returning an error also guards against the no-cgo build where Write panics.
+func copyToClipboardCmd(text string) tea.Cmd {
+	x11 := func() tea.Msg {
+		if err := clipboard.Init(); err == nil {
+			clipboard.Write(clipboard.FmtText, []byte(text))
+		}
+		return nil
+	}
+	return tea.Batch(tea.SetClipboard(text), x11)
+}
+
 // ── Init / Update / View ──────────────────────────────────────────────────────
 
 // Init implements tea.Model.
@@ -258,6 +305,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+
+	case tea.PasteMsg:
+		// Terminal bracketed-paste (e.g. Ctrl+Shift+V, middle-click). Enabled
+		// by default in bubbletea v2; route the content into the active input.
+		m.insertPaste(msg.Content)
+		return m, nil
 
 	case FetchedMsg:
 		m.secrets = msg.Secrets
@@ -355,11 +408,7 @@ func (m Model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.err = fmt.Errorf("clipboard: %w", err)
 				return m, nil
 			}
-			if initErr := clipboard.Init(); initErr != nil {
-				m.err = fmt.Errorf("clipboard unavailable: %w", initErr)
-				return m, nil
-			}
-			clipboard.Write(clipboard.FmtText, []byte(decrypted))
+			return m, copyToClipboardCmd(decrypted)
 		}
 	case "esc", "q":
 		if m.searchQuery != "" {
@@ -410,11 +459,7 @@ func (m Model) updateAdd(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		paste := clipboard.Read(clipboard.FmtText)
 		if len(paste) != 0 {
-			if m.activeField == 0 {
-				m.inputKey += string(paste)
-			} else {
-				m.inputValue += string(paste)
-			}
+			m.insertPaste(string(paste))
 		}
 	case "backspace":
 		if m.activeField == 0 {
@@ -471,11 +516,7 @@ func (m Model) updateEdit(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		paste := clipboard.Read(clipboard.FmtText)
 		if len(paste) != 0 {
-			if m.activeField == 0 {
-				m.inputKey += string(paste)
-			} else {
-				m.inputValue += string(paste)
-			}
+			m.insertPaste(string(paste))
 		}
 	default:
 		if text := msg.Key().Text; text != "" {
@@ -614,15 +655,15 @@ func (m Model) View() tea.View {
 			hints = fmt.Sprintf("%s  ↑/↓ navigate • ←/→ page • n add • e edit • d delete • c copy • / search • Esc back", pageInfo)
 		}
 	case modeSearch:
-		hints = fmt.Sprintf("Search: %s█  Enter/Esc confirm • Esc clear", m.searchQuery)
+		hints = fmt.Sprintf("Search: %s█  Enter/Esc confirm • Esc clear • Ctrl+Shift+V paste", m.searchQuery)
 	case modeAdd:
 		if m.activeField == 0 {
-			hints = "Tab/Enter next field • Esc cancel • Ctrl+V paste"
+			hints = "Tab/Enter next field • Esc cancel • Ctrl+Shift+V/Ctrl+V paste"
 		} else {
-			hints = "Enter confirm • Esc cancel • Ctrl+V paste"
+			hints = "Enter confirm • Esc cancel • Ctrl+Shift+V/Ctrl+V paste"
 		}
 	case modeEdit:
-		hints = "Enter confirm • Esc cancel • Ctrl+V paste"
+		hints = "Enter confirm • Esc cancel • Ctrl+Shift+V/Ctrl+V paste"
 	case modeDelete:
 		hints = "y confirm • any key cancel"
 	}
