@@ -141,6 +141,47 @@ func TestSecretsModel_FetchUpdates(t *testing.T) {
 	}
 }
 
+// ── multi-line value rendering ─────────────────────────────────────────────────
+
+func TestFlattenForDisplay(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"no newline", "plain", "plain"},
+		{"lf", "line1\nline2", "line1↵ line2"},
+		{"crlf", "line1\r\nline2", "line1↵ line2"},
+		{"cr", "line1\rline2", "line1↵ line2"},
+		{"json", "{\n  \"a\": 1\n}", "{↵   \"a\": 1↵ }"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := flattenForDisplay(tc.in); got != tc.want {
+				t.Errorf("flattenForDisplay(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// A multi-line value (e.g. pasted JSON) must render on a single line in the list
+// table: the KEY must still be visible and the embedded newline collapsed inline.
+func TestSecretsModel_MultilineValueRendersSingleLine(t *testing.T) {
+	m := newTestModel(t, nil)
+	sess := testSession(t)
+	blob := encryptBlob(t, sess, "line1\nline2")
+
+	m = applyFetched(m, []client.SecretEntry{{Key: "mykey", Value: blob}})
+
+	view := m.View().Content
+	if !strings.Contains(view, "mykey") {
+		t.Errorf("view should contain the KEY, got:\n%s", view)
+	}
+	if !strings.Contains(view, "line1↵ line2") {
+		t.Errorf("multi-line value should be flattened inline, got:\n%s", view)
+	}
+}
+
 // ── ErrMsg ────────────────────────────────────────────────────────────────────
 
 func TestSecretsModel_ErrDisplayed(t *testing.T) {

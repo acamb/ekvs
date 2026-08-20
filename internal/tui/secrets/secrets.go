@@ -66,16 +66,20 @@ func (m Model) buildTable() table.Model {
 	items := m.pageSecrets()
 
 	// Compute column widths.
-	keyW := 3 // minimum "KEY"
-	valW := 5 // minimum "VALUE"
+	const maxValW = 80 // cap so a long value doesn't blow up the table width
+	keyW := 3          // minimum "KEY"
+	valW := 5          // minimum "VALUE"
 	for _, e := range items {
 		if len(e.Key) > keyW {
 			keyW = len(e.Key)
 		}
-		dec := m.decryptedValue(e)
+		dec := flattenForDisplay(m.decryptedValue(e))
 		if len(dec) > valW {
 			valW = len(dec)
 		}
+	}
+	if valW > maxValW {
+		valW = maxValW
 	}
 
 	cols := []table.Column{
@@ -85,7 +89,7 @@ func (m Model) buildTable() table.Model {
 
 	rows := make([]table.Row, len(items))
 	for i, e := range items {
-		rows[i] = table.Row{e.Key, m.decryptedValue(e)}
+		rows[i] = table.Row{e.Key, flattenForDisplay(m.decryptedValue(e))}
 	}
 
 	// Each column has padding(0,1) = 2 extra chars; account for both columns.
@@ -246,6 +250,13 @@ func (m *Model) insertPaste(content string) {
 // content does not break single-line fields (key, search query).
 func sanitizeSingleLine(s string) string {
 	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
+}
+
+// flattenForDisplay collapses newlines/carriage returns into a visible marker
+// so multi-line values render on a single line in the table and inline input
+// fields. It does not mutate the stored value; only the rendered string.
+func flattenForDisplay(s string) string {
+	return strings.NewReplacer("\r\n", "↵ ", "\r", "↵ ", "\n", "↵ ").Replace(s)
 }
 
 // copyToClipboardCmd copies text to the system clipboard. The primary path is
@@ -616,7 +627,7 @@ func (m Model) View() tea.View {
 		sb.WriteString(m.theme.MenuItemStyle().Render("  Add secret"))
 		sb.WriteString("\n")
 		keyLine := fmt.Sprintf("  KEY:   %s", m.inputKey)
-		valLine := fmt.Sprintf("  VALUE: %s", m.inputValue)
+		valLine := fmt.Sprintf("  VALUE: %s", flattenForDisplay(m.inputValue))
 		if m.activeField == 0 {
 			keyLine += "█"
 		} else {
@@ -632,7 +643,7 @@ func (m Model) View() tea.View {
 		sb.WriteString("\n")
 		sb.WriteString(m.theme.MenuItemStyle().Render(fmt.Sprintf("  KEY:   %s", m.inputKey)))
 		sb.WriteString("\n")
-		sb.WriteString(m.theme.MenuItemStyle().Render(fmt.Sprintf("  VALUE: %s█", m.inputValue)))
+		sb.WriteString(m.theme.MenuItemStyle().Render(fmt.Sprintf("  VALUE: %s█", flattenForDisplay(m.inputValue))))
 		sb.WriteString("\n")
 
 	case modeDelete:
